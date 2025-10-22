@@ -24,14 +24,25 @@ import time
 import threading
 from typing import Dict, List, Optional, Tuple
 import requests
+from PIL import Image
 
 # Page configuration
-st.set_page_config(
-    page_title="RN Time Tracker",
-    page_icon="Icon.png",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
+try:
+    favicon = Image.open("Icon.png")
+    st.set_page_config(
+        page_title="RN Time Tracker",
+        page_icon=favicon,
+        layout="wide",
+        initial_sidebar_state="expanded"
+    )
+except:
+    # Fallback if icon file not found
+    st.set_page_config(
+        page_title="RN Time Tracker",
+        page_icon="⏰",
+        layout="wide",
+        initial_sidebar_state="expanded"
+    )
 
 # Custom CSS - Light, clean styling matching quote app
 st.markdown("""
