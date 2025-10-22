@@ -778,6 +778,13 @@ class TimeTrackerApp:
             # Try Streamlit secrets first (for cloud deployment)
             # Check if we're in a Streamlit context and secrets are available
             try:
+                print(f"🔍 Debug: Checking Streamlit secrets availability...")
+                print(f"🔍 Debug: hasattr(st, 'secrets'): {hasattr(st, 'secrets')}")
+                if hasattr(st, 'secrets'):
+                    print(f"🔍 Debug: st.secrets type: {type(st.secrets)}")
+                    print(f"🔍 Debug: st.secrets keys: {list(st.secrets.keys()) if hasattr(st.secrets, 'keys') else 'No keys method'}")
+                    print(f"🔍 Debug: 'type' in st.secrets: {'type' in st.secrets}")
+                
                 if hasattr(st, 'secrets') and hasattr(st.secrets, 'get') and 'type' in st.secrets:
                     print("🔍 Debug: Loading credentials from Streamlit secrets...")
                     # Build credentials dictionary from individual secret keys
@@ -809,6 +816,8 @@ class TimeTrackerApp:
                     print(f"🔍 Client Email: {self.credentials.get('client_email', 'NOT SET')}")
                     print(f"🔍 Spreadsheet ID: {self.spreadsheet_id}")
                     return
+                else:
+                    print(f"🔍 Debug: Secrets not available or 'type' not found")
             except Exception as secrets_error:
                 print(f"🔍 Debug: Streamlit secrets not available: {str(secrets_error)}")
                 # Continue to fallback
