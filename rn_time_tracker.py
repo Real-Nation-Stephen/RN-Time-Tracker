@@ -767,26 +767,51 @@ class TimeTrackerApp:
     
     def load_credentials(self):
         """Load Google Sheets API credentials from Streamlit secrets or local file"""
+        # Initialize default values
+        self.credentials = None
+        self.smtp_settings = None
+        self.spreadsheet_id = None
+        self.users_tab = 'Users'
+        self.time_entries_tab = 'Time Entries'
+        
         try:
             # Try Streamlit secrets first (for cloud deployment)
-            if hasattr(st, 'secrets') and 'GOOGLE_SHEETS_CREDENTIALS' in st.secrets:
-                print("🔍 Debug: Loading credentials from Streamlit secrets...")
-                self.credentials = dict(st.secrets['GOOGLE_SHEETS_CREDENTIALS'])
-                self.spreadsheet_id = st.secrets.get('SPREADSHEET_ID', '')
-                self.users_tab = st.secrets.get('USERS_TAB_NAME', 'Users')
-                self.time_entries_tab = st.secrets.get('TIME_ENTRIES_TAB_NAME', 'Time Entries')
-                
-                # Load SMTP settings if available
-                if 'GMAIL_SMTP_SETTINGS' in st.secrets:
-                    self.smtp_settings = dict(st.secrets['GMAIL_SMTP_SETTINGS'])
-                else:
-                    self.smtp_settings = None
-                
-                print(f"✅ Credentials loaded from Streamlit secrets")
-                print(f"🔍 Project ID: {self.credentials.get('project_id', 'NOT SET')}")
-                print(f"🔍 Client Email: {self.credentials.get('client_email', 'NOT SET')}")
-                print(f"🔍 Spreadsheet ID: {self.spreadsheet_id}")
-                return
+            # Check if we're in a Streamlit context and secrets are available
+            try:
+                if hasattr(st, 'secrets') and hasattr(st.secrets, 'get') and 'type' in st.secrets:
+                    print("🔍 Debug: Loading credentials from Streamlit secrets...")
+                    # Build credentials dictionary from individual secret keys
+                    self.credentials = {
+                        "type": st.secrets.get('type', ''),
+                        "project_id": st.secrets.get('project_id', ''),
+                        "private_key_id": st.secrets.get('private_key_id', ''),
+                        "private_key": st.secrets.get('private_key', ''),
+                        "client_email": st.secrets.get('client_email', ''),
+                        "client_id": st.secrets.get('client_id', ''),
+                        "auth_uri": st.secrets.get('auth_uri', ''),
+                        "token_uri": st.secrets.get('token_uri', ''),
+                        "auth_provider_x509_cert_url": st.secrets.get('auth_provider_x509_cert_url', ''),
+                        "client_x509_cert_url": st.secrets.get('client_x509_cert_url', ''),
+                        "universe_domain": st.secrets.get('universe_domain', '')
+                    }
+                    self.spreadsheet_id = st.secrets.get('SPREADSHEET_ID', '')
+                    self.users_tab = st.secrets.get('USERS_TAB_NAME', 'Users')
+                    self.time_entries_tab = st.secrets.get('TIME_ENTRIES_TAB_NAME', 'Time Entries')
+                    
+                    # Load SMTP settings if available
+                    if 'GMAIL_SMTP_SETTINGS' in st.secrets:
+                        self.smtp_settings = dict(st.secrets['GMAIL_SMTP_SETTINGS'])
+                    else:
+                        self.smtp_settings = None
+                    
+                    print(f"✅ Credentials loaded from Streamlit secrets")
+                    print(f"🔍 Project ID: {self.credentials.get('project_id', 'NOT SET')}")
+                    print(f"🔍 Client Email: {self.credentials.get('client_email', 'NOT SET')}")
+                    print(f"🔍 Spreadsheet ID: {self.spreadsheet_id}")
+                    return
+            except Exception as secrets_error:
+                print(f"🔍 Debug: Streamlit secrets not available: {str(secrets_error)}")
+                # Continue to fallback
             
             # Fall back to local file (for local development)
             print("🔍 Debug: Loading credentials from auth/password_sheet_api.py...")
