@@ -28,7 +28,7 @@ import requests
 # Page configuration
 st.set_page_config(
     page_title="RN Time Tracker",
-    page_icon="assets/favicon.png",
+    page_icon="⏰",  # Using emoji for reliability across all deployments
     layout="wide",
     initial_sidebar_state="expanded"
 )
