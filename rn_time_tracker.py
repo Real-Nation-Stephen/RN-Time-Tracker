@@ -776,16 +776,30 @@ class TimeTrackerApp:
         
         try:
             # Try Streamlit secrets first (for cloud deployment)
+            # Build credentials dict from nested GOOGLE_SHEETS_CREDENTIALS section
             if hasattr(st, 'secrets') and 'GOOGLE_SHEETS_CREDENTIALS' in st.secrets:
                 print("🔍 Debug: Loading credentials from Streamlit secrets...")
-                self.credentials = st.secrets["GOOGLE_SHEETS_CREDENTIALS"]
+                creds_section = st.secrets["GOOGLE_SHEETS_CREDENTIALS"]
+                self.credentials = {
+                    "type": creds_section.get("type", "service_account"),
+                    "project_id": creds_section.get("project_id", ""),
+                    "private_key_id": creds_section.get("private_key_id", ""),
+                    "private_key": creds_section.get("private_key", ""),
+                    "client_email": creds_section.get("client_email", ""),
+                    "client_id": creds_section.get("client_id", ""),
+                    "auth_uri": creds_section.get("auth_uri", "https://accounts.google.com/o/oauth2/auth"),
+                    "token_uri": creds_section.get("token_uri", "https://oauth2.googleapis.com/token"),
+                    "auth_provider_x509_cert_url": creds_section.get("auth_provider_x509_cert_url", "https://www.googleapis.com/oauth2/v1/certs"),
+                    "client_x509_cert_url": creds_section.get("client_x509_cert_url", ""),
+                    "universe_domain": creds_section.get("universe_domain", "googleapis.com")
+                }
                 self.spreadsheet_id = st.secrets.get("SPREADSHEET_ID", "")
                 self.users_tab = st.secrets.get("USERS_TAB_NAME", "Users")
                 self.time_entries_tab = st.secrets.get("TIME_ENTRIES_TAB_NAME", "Time Entries")
                 
                 # Load SMTP settings if available
                 if 'GMAIL_SMTP_SETTINGS' in st.secrets:
-                    self.smtp_settings = st.secrets['GMAIL_SMTP_SETTINGS']
+                    self.smtp_settings = dict(st.secrets['GMAIL_SMTP_SETTINGS'])
                 else:
                     self.smtp_settings = None
                 
