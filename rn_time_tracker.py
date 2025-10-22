@@ -1204,8 +1204,17 @@ def main():
     if 'authenticated_user' not in st.session_state:
         st.session_state.authenticated_user = None
     
+    # DEBUG: Show credentials status in UI
+    if 'show_debug' not in st.session_state:
+        st.session_state.show_debug = False
+    
     # Create app instance (used for utility functions)
     app = TimeTrackerApp()
+    
+    # Show debug info if credentials failed to load
+    if not app.credentials and st.session_state.get('show_debug', False):
+        st.error("⚠️ Failed to load Google Sheets credentials")
+        st.info("Using demo mode with fallback users")
     
     # Authentication Check
     if not st.session_state.authenticated_user:
@@ -1225,6 +1234,12 @@ def main():
         users = app.get_users_from_sheet()
         user_names = [user["name"] for user in users]
         user_lookup = {user["name"]: user for user in users}
+        
+        # Show connection status
+        if len(users) == 2 and users[0]["name"] == "Kay" and users[1]["name"] == "Stephen":
+            st.warning("⚠️ Using demo mode - Google Sheets not connected. Only showing fallback users.")
+        else:
+            st.success(f"✅ Connected to Google Sheets - {len(users)} users loaded")
         
         # User selection
         selected_user = st.selectbox("Select your name", options=user_names, key="login_user")
