@@ -785,22 +785,10 @@ class TimeTrackerApp:
                     print(f"🔍 Debug: st.secrets keys: {list(st.secrets.keys()) if hasattr(st.secrets, 'keys') else 'No keys method'}")
                     print(f"🔍 Debug: 'type' in st.secrets: {'type' in st.secrets}")
                 
-                if hasattr(st, 'secrets') and hasattr(st.secrets, 'get') and 'type' in st.secrets:
+                if hasattr(st, 'secrets') and hasattr(st.secrets, 'get') and 'GOOGLE_SHEETS_CREDENTIALS' in st.secrets:
                     print("🔍 Debug: Loading credentials from Streamlit secrets...")
-                    # Build credentials dictionary from individual secret keys
-                    self.credentials = {
-                        "type": st.secrets.get('type', ''),
-                        "project_id": st.secrets.get('project_id', ''),
-                        "private_key_id": st.secrets.get('private_key_id', ''),
-                        "private_key": st.secrets.get('private_key', ''),
-                        "client_email": st.secrets.get('client_email', ''),
-                        "client_id": st.secrets.get('client_id', ''),
-                        "auth_uri": st.secrets.get('auth_uri', ''),
-                        "token_uri": st.secrets.get('token_uri', ''),
-                        "auth_provider_x509_cert_url": st.secrets.get('auth_provider_x509_cert_url', ''),
-                        "client_x509_cert_url": st.secrets.get('client_x509_cert_url', ''),
-                        "universe_domain": st.secrets.get('universe_domain', '')
-                    }
+                    # Get credentials from nested dictionary
+                    self.credentials = dict(st.secrets['GOOGLE_SHEETS_CREDENTIALS'])
                     self.spreadsheet_id = st.secrets.get('SPREADSHEET_ID', '')
                     self.users_tab = st.secrets.get('USERS_TAB_NAME', 'Users')
                     self.time_entries_tab = st.secrets.get('TIME_ENTRIES_TAB_NAME', 'Time Entries')
@@ -1219,16 +1207,6 @@ def main():
     # Initialize session state
     if 'authenticated_user' not in st.session_state:
         st.session_state.authenticated_user = None
-    
-    # DEBUG: Show what's happening with secrets
-    st.write("🔍 DEBUG: Starting app...")
-    st.write(f"🔍 DEBUG: hasattr(st, 'secrets'): {hasattr(st, 'secrets')}")
-    if hasattr(st, 'secrets'):
-        st.write(f"🔍 DEBUG: st.secrets type: {type(st.secrets)}")
-        try:
-            st.write(f"🔍 DEBUG: st.secrets keys: {list(st.secrets.keys())}")
-        except Exception as e:
-            st.write(f"🔍 DEBUG: Error getting keys: {e}")
     
     # Create app instance (used for utility functions)
     app = TimeTrackerApp()
