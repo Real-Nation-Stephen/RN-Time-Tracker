@@ -776,41 +776,68 @@ class TimeTrackerApp:
         
         try:
             # Try Streamlit secrets first (for cloud deployment)
-            # Build credentials dict from nested GOOGLE_SHEETS_CREDENTIALS section
+            # Try FLAT structure first (like quote app), then nested structure
             try:
-                if hasattr(st, 'secrets') and 'GOOGLE_SHEETS_CREDENTIALS' in st.secrets:
-                    print("🔍 Debug: Loading credentials from Streamlit secrets...")
-                    creds_section = st.secrets["GOOGLE_SHEETS_CREDENTIALS"]
-                    
-                    # Build credentials dictionary
-                    self.credentials = {
-                        "type": creds_section.get("type", "service_account"),
-                        "project_id": creds_section.get("project_id", ""),
-                        "private_key_id": creds_section.get("private_key_id", ""),
-                        "private_key": creds_section.get("private_key", ""),
-                        "client_email": creds_section.get("client_email", ""),
-                        "client_id": creds_section.get("client_id", ""),
-                        "auth_uri": creds_section.get("auth_uri", "https://accounts.google.com/o/oauth2/auth"),
-                        "token_uri": creds_section.get("token_uri", "https://oauth2.googleapis.com/token"),
-                        "auth_provider_x509_cert_url": creds_section.get("auth_provider_x509_cert_url", "https://www.googleapis.com/oauth2/v1/certs"),
-                        "client_x509_cert_url": creds_section.get("client_x509_cert_url", ""),
-                        "universe_domain": creds_section.get("universe_domain", "googleapis.com")
-                    }
-                    self.spreadsheet_id = st.secrets.get("SPREADSHEET_ID", "")
-                    self.users_tab = st.secrets.get("USERS_TAB_NAME", "Users")
-                    self.time_entries_tab = st.secrets.get("TIME_ENTRIES_TAB_NAME", "Time Entries")
-                    
-                    # Load SMTP settings if available
-                    if 'GMAIL_SMTP_SETTINGS' in st.secrets:
-                        self.smtp_settings = dict(st.secrets['GMAIL_SMTP_SETTINGS'])
-                    else:
+                if hasattr(st, 'secrets'):
+                    # Try flat structure (individual keys at top level)
+                    if 'project_id' in st.secrets and 'client_email' in st.secrets:
+                        print("🔍 Debug: Loading credentials from Streamlit secrets (flat structure)...")
+                        self.credentials = {
+                            "type": st.secrets.get("type", "service_account"),
+                            "project_id": st.secrets.get("project_id", ""),
+                            "private_key_id": st.secrets.get("private_key_id", ""),
+                            "private_key": st.secrets.get("private_key", ""),
+                            "client_email": st.secrets.get("client_email", ""),
+                            "client_id": st.secrets.get("client_id", ""),
+                            "auth_uri": st.secrets.get("auth_uri", "https://accounts.google.com/o/oauth2/auth"),
+                            "token_uri": st.secrets.get("token_uri", "https://oauth2.googleapis.com/token"),
+                            "auth_provider_x509_cert_url": st.secrets.get("auth_provider_x509_cert_url", "https://www.googleapis.com/oauth2/v1/certs"),
+                            "client_x509_cert_url": st.secrets.get("client_x509_cert_url", ""),
+                            "universe_domain": st.secrets.get("universe_domain", "googleapis.com")
+                        }
+                        self.spreadsheet_id = st.secrets.get("SPREADSHEET_ID", "")
+                        self.users_tab = st.secrets.get("USERS_TAB_NAME", "Users")
+                        self.time_entries_tab = st.secrets.get("TIME_ENTRIES_TAB_NAME", "Time Entries")
                         self.smtp_settings = None
+                        
+                        print(f"✅ Credentials loaded from Streamlit secrets (flat)")
+                        print(f"🔍 Project ID: {self.credentials.get('project_id', 'NOT SET')}")
+                        print(f"🔍 Client Email: {self.credentials.get('client_email', 'NOT SET')}")
+                        print(f"🔍 Spreadsheet ID: {self.spreadsheet_id}")
+                        return
                     
-                    print(f"✅ Credentials loaded from Streamlit secrets")
-                    print(f"🔍 Project ID: {self.credentials.get('project_id', 'NOT SET')}")
-                    print(f"🔍 Client Email: {self.credentials.get('client_email', 'NOT SET')}")
-                    print(f"🔍 Spreadsheet ID: {self.spreadsheet_id}")
-                    return
+                    # Try nested structure (keys under GOOGLE_SHEETS_CREDENTIALS section)
+                    elif 'GOOGLE_SHEETS_CREDENTIALS' in st.secrets:
+                        print("🔍 Debug: Loading credentials from Streamlit secrets (nested structure)...")
+                        creds_section = st.secrets["GOOGLE_SHEETS_CREDENTIALS"]
+                        
+                        self.credentials = {
+                            "type": creds_section.get("type", "service_account"),
+                            "project_id": creds_section.get("project_id", ""),
+                            "private_key_id": creds_section.get("private_key_id", ""),
+                            "private_key": creds_section.get("private_key", ""),
+                            "client_email": creds_section.get("client_email", ""),
+                            "client_id": creds_section.get("client_id", ""),
+                            "auth_uri": creds_section.get("auth_uri", "https://accounts.google.com/o/oauth2/auth"),
+                            "token_uri": creds_section.get("token_uri", "https://oauth2.googleapis.com/token"),
+                            "auth_provider_x509_cert_url": creds_section.get("auth_provider_x509_cert_url", "https://www.googleapis.com/oauth2/v1/certs"),
+                            "client_x509_cert_url": creds_section.get("client_x509_cert_url", ""),
+                            "universe_domain": creds_section.get("universe_domain", "googleapis.com")
+                        }
+                        self.spreadsheet_id = st.secrets.get("SPREADSHEET_ID", "")
+                        self.users_tab = st.secrets.get("USERS_TAB_NAME", "Users")
+                        self.time_entries_tab = st.secrets.get("TIME_ENTRIES_TAB_NAME", "Time Entries")
+                        
+                        if 'GMAIL_SMTP_SETTINGS' in st.secrets:
+                            self.smtp_settings = dict(st.secrets['GMAIL_SMTP_SETTINGS'])
+                        else:
+                            self.smtp_settings = None
+                        
+                        print(f"✅ Credentials loaded from Streamlit secrets (nested)")
+                        print(f"🔍 Project ID: {self.credentials.get('project_id', 'NOT SET')}")
+                        print(f"🔍 Client Email: {self.credentials.get('client_email', 'NOT SET')}")
+                        print(f"🔍 Spreadsheet ID: {self.spreadsheet_id}")
+                        return
             except Exception as e:
                 print(f"⚠️  Failed to load from Streamlit secrets: {str(e)}")
                 print(f"🔍 Error type: {type(e).__name__}")
