@@ -1220,6 +1220,16 @@ def main():
     if 'authenticated_user' not in st.session_state:
         st.session_state.authenticated_user = None
     
+    # DEBUG: Show what's happening with secrets
+    st.write("🔍 DEBUG: Starting app...")
+    st.write(f"🔍 DEBUG: hasattr(st, 'secrets'): {hasattr(st, 'secrets')}")
+    if hasattr(st, 'secrets'):
+        st.write(f"🔍 DEBUG: st.secrets type: {type(st.secrets)}")
+        try:
+            st.write(f"🔍 DEBUG: st.secrets keys: {list(st.secrets.keys())}")
+        except Exception as e:
+            st.write(f"🔍 DEBUG: Error getting keys: {e}")
+    
     # Create app instance (used for utility functions)
     app = TimeTrackerApp()
     
