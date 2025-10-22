@@ -1,0 +1,14 @@
+streamlit
+pandas
+openpyxl
+plotly
+reportlab
+gspread
+google-auth
+google-auth-oauthlib
+google-auth-httplib2
+icalendar
+email-validator
+schedule
+requests
+pytz

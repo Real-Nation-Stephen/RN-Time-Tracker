@@ -1,0 +1,31 @@
+# Secrets and credentials
+auth/password_sheet_api.py
+.streamlit/secrets.toml
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test files
+*.ics
+*.ical
+*.zip
+*.xlsx
+*_Syntax-Fix-Report.txt
+*_Cursor-Instructions.txt
+App Passwords.xlsx
+quote-app-starter*.zip
+
