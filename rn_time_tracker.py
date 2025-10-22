@@ -766,8 +766,29 @@ class TimeTrackerApp:
         return overlaps
     
     def load_credentials(self):
-        """Load Google Sheets API credentials"""
+        """Load Google Sheets API credentials from Streamlit secrets or local file"""
         try:
+            # Try Streamlit secrets first (for cloud deployment)
+            if hasattr(st, 'secrets') and 'GOOGLE_SHEETS_CREDENTIALS' in st.secrets:
+                print("🔍 Debug: Loading credentials from Streamlit secrets...")
+                self.credentials = dict(st.secrets['GOOGLE_SHEETS_CREDENTIALS'])
+                self.spreadsheet_id = st.secrets.get('SPREADSHEET_ID', '')
+                self.users_tab = st.secrets.get('USERS_TAB_NAME', 'Users')
+                self.time_entries_tab = st.secrets.get('TIME_ENTRIES_TAB_NAME', 'Time Entries')
+                
+                # Load SMTP settings if available
+                if 'GMAIL_SMTP_SETTINGS' in st.secrets:
+                    self.smtp_settings = dict(st.secrets['GMAIL_SMTP_SETTINGS'])
+                else:
+                    self.smtp_settings = None
+                
+                print(f"✅ Credentials loaded from Streamlit secrets")
+                print(f"🔍 Project ID: {self.credentials.get('project_id', 'NOT SET')}")
+                print(f"🔍 Client Email: {self.credentials.get('client_email', 'NOT SET')}")
+                print(f"🔍 Spreadsheet ID: {self.spreadsheet_id}")
+                return
+            
+            # Fall back to local file (for local development)
             print("🔍 Debug: Loading credentials from auth/password_sheet_api.py...")
             from auth.password_sheet_api import (
                 GOOGLE_SHEETS_CREDENTIALS, 
@@ -782,14 +803,10 @@ class TimeTrackerApp:
             self.users_tab = USERS_TAB_NAME
             self.time_entries_tab = TIME_ENTRIES_TAB_NAME
             
-            # Debug: Check if credentials are properly formatted
-            if self.credentials:
-                print(f"✅ Credentials loaded successfully")
-                print(f"🔍 Project ID: {self.credentials.get('project_id', 'NOT SET')}")
-                print(f"🔍 Client Email: {self.credentials.get('client_email', 'NOT SET')}")
-                print(f"🔍 Spreadsheet ID: {self.spreadsheet_id}")
-            else:
-                print("⚠️  No credentials found")
+            print(f"✅ Credentials loaded from local file")
+            print(f"🔍 Project ID: {self.credentials.get('project_id', 'NOT SET')}")
+            print(f"🔍 Client Email: {self.credentials.get('client_email', 'NOT SET')}")
+            print(f"🔍 Spreadsheet ID: {self.spreadsheet_id}")
                 
         except ImportError as e:
             print("⚠️  Authentication credentials not found. Using demo mode.")
@@ -798,9 +815,10 @@ class TimeTrackerApp:
             self.smtp_settings = None
             self.spreadsheet_id = None
         except Exception as e:
-            print(f"❌ Error loading credentials: {str(e)}")
+            print(f"❌ Failed to load credentials: {str(e)}")
             self.credentials = None
             self.smtp_settings = None
+            self.spreadsheet_id = None
             self.spreadsheet_id = None
     
     def connect_to_sheets(self):
