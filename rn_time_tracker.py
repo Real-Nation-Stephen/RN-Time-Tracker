@@ -819,7 +819,6 @@ class TimeTrackerApp:
             self.credentials = None
             self.smtp_settings = None
             self.spreadsheet_id = None
-            self.spreadsheet_id = None
     
     def connect_to_sheets(self):
         """Connect to Google Sheets"""
