@@ -776,39 +776,24 @@ class TimeTrackerApp:
         
         try:
             # Try Streamlit secrets first (for cloud deployment)
-            # Check if we're in a Streamlit context and secrets are available
-            try:
-                print(f"🔍 Debug: Checking Streamlit secrets availability...")
-                print(f"🔍 Debug: hasattr(st, 'secrets'): {hasattr(st, 'secrets')}")
-                if hasattr(st, 'secrets'):
-                    print(f"🔍 Debug: st.secrets type: {type(st.secrets)}")
-                    print(f"🔍 Debug: st.secrets keys: {list(st.secrets.keys()) if hasattr(st.secrets, 'keys') else 'No keys method'}")
-                    print(f"🔍 Debug: 'type' in st.secrets: {'type' in st.secrets}")
+            if hasattr(st, 'secrets') and 'GOOGLE_SHEETS_CREDENTIALS' in st.secrets:
+                print("🔍 Debug: Loading credentials from Streamlit secrets...")
+                self.credentials = st.secrets["GOOGLE_SHEETS_CREDENTIALS"]
+                self.spreadsheet_id = st.secrets.get("SPREADSHEET_ID", "")
+                self.users_tab = st.secrets.get("USERS_TAB_NAME", "Users")
+                self.time_entries_tab = st.secrets.get("TIME_ENTRIES_TAB_NAME", "Time Entries")
                 
-                if hasattr(st, 'secrets') and hasattr(st.secrets, 'get') and 'GOOGLE_SHEETS_CREDENTIALS' in st.secrets:
-                    print("🔍 Debug: Loading credentials from Streamlit secrets...")
-                    # Get credentials from nested dictionary
-                    self.credentials = dict(st.secrets['GOOGLE_SHEETS_CREDENTIALS'])
-                    self.spreadsheet_id = st.secrets.get('SPREADSHEET_ID', '')
-                    self.users_tab = st.secrets.get('USERS_TAB_NAME', 'Users')
-                    self.time_entries_tab = st.secrets.get('TIME_ENTRIES_TAB_NAME', 'Time Entries')
-                    
-                    # Load SMTP settings if available
-                    if 'GMAIL_SMTP_SETTINGS' in st.secrets:
-                        self.smtp_settings = dict(st.secrets['GMAIL_SMTP_SETTINGS'])
-                    else:
-                        self.smtp_settings = None
-                    
-                    print(f"✅ Credentials loaded from Streamlit secrets")
-                    print(f"🔍 Project ID: {self.credentials.get('project_id', 'NOT SET')}")
-                    print(f"🔍 Client Email: {self.credentials.get('client_email', 'NOT SET')}")
-                    print(f"🔍 Spreadsheet ID: {self.spreadsheet_id}")
-                    return
+                # Load SMTP settings if available
+                if 'GMAIL_SMTP_SETTINGS' in st.secrets:
+                    self.smtp_settings = st.secrets['GMAIL_SMTP_SETTINGS']
                 else:
-                    print(f"🔍 Debug: Secrets not available or 'type' not found")
-            except Exception as secrets_error:
-                print(f"🔍 Debug: Streamlit secrets not available: {str(secrets_error)}")
-                # Continue to fallback
+                    self.smtp_settings = None
+                
+                print(f"✅ Credentials loaded from Streamlit secrets")
+                print(f"🔍 Project ID: {self.credentials.get('project_id', 'NOT SET')}")
+                print(f"🔍 Client Email: {self.credentials.get('client_email', 'NOT SET')}")
+                print(f"🔍 Spreadsheet ID: {self.spreadsheet_id}")
+                return
             
             # Fall back to local file (for local development)
             print("🔍 Debug: Loading credentials from auth/password_sheet_api.py...")
@@ -851,30 +836,20 @@ class TimeTrackerApp:
                 
             print(f"🔍 Connecting to Google Sheets...")
             
-            # Use modern Google OAuth library
-            scopes = ['https://www.googleapis.com/auth/spreadsheets']
-            
-            creds = Credentials.from_service_account_info(
-                self.credentials,
-                scopes=scopes
-            )
-            
+            # Use your suggested pattern
+            scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
+            creds = Credentials.from_service_account_info(self.credentials, scopes=scopes)
             self.sheet_client = gspread.authorize(creds)
+            self.spreadsheet = self.sheet_client.open_by_key(self.spreadsheet_id)
             
-            # Try to open the spreadsheet by ID
-            try:
-                self.spreadsheet = self.sheet_client.open_by_key(self.spreadsheet_id)
-                print(f"✅ Successfully connected to Google Sheets!")
-                print(f"📊 Spreadsheet: {self.spreadsheet.title}")
-                return True
-            except gspread.SpreadsheetNotFound:
-                print(f"❌ Spreadsheet with ID '{self.spreadsheet_id}' not found.")
-                print("📋 Make sure the spreadsheet is shared with your service account email.")
-                return False
-            except Exception as e:
-                print(f"❌ Error opening spreadsheet: {str(e)}")
-                return False
+            print(f"✅ Successfully connected to Google Sheets!")
+            print(f"📊 Spreadsheet: {self.spreadsheet.title}")
+            return True
             
+        except gspread.SpreadsheetNotFound:
+            print(f"❌ Spreadsheet with ID '{self.spreadsheet_id}' not found.")
+            print("📋 Make sure the spreadsheet is shared with your service account email.")
+            return False
         except Exception as e:
             print(f"❌ Failed to connect to Google Sheets: {str(e)}")
             print(f"🔍 Error type: {type(e).__name__}")
