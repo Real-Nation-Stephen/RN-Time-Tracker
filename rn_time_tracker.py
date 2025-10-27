@@ -28,13 +28,13 @@ from PIL import Image
 
 # Page configuration
 try:
-    favicon = Image.open("Icon.png")
-    st.set_page_config(
-        page_title="RN Time Tracker",
-        page_icon=favicon,
-        layout="wide",
-        initial_sidebar_state="expanded"
-    )
+    with Image.open("Icon.png") as favicon:
+        st.set_page_config(
+            page_title="RN Time Tracker",
+            page_icon=favicon,
+            layout="wide",
+            initial_sidebar_state="expanded"
+        )
 except:
     # Fallback if icon file not found
     st.set_page_config(
@@ -402,17 +402,22 @@ class TimeTrackerApp:
         self.load_credentials()
         
     def get_users_from_sheet(self) -> List[Dict]:
-        """Get users from Google Sheets Users tab"""
+        """Get users from Google Sheets Users tab (cached for performance)"""
+        # Return cached users if available
+        if hasattr(self, '_cached_users') and self._cached_users:
+            return self._cached_users
+            
         try:
             print("🔍 Loading users from Google Sheets...")
             
             if not self.connect_to_sheets():
                 # Fallback to demo users if no connection
                 print("⚠️  Using demo mode - Google Sheets not connected")
-                return [
+                self._cached_users = [
                     {"name": "Kay", "email": "kay@realnation.ie", "role": "admin", "password": ""},
                     {"name": "Stephen", "email": "stephen@realnation.ie", "role": "admin", "password": ""}
                 ]
+                return self._cached_users
             
             # Get users from the Users tab
             try:
@@ -438,18 +443,20 @@ class TimeTrackerApp:
                         })
                 
                 print(f"✅ Loaded {len(users)} users from sheet")
-                return users if users else [
+                self._cached_users = users if users else [
                     {"name": "Kay", "email": "kay@realnation.ie", "role": "admin", "password": ""},
                     {"name": "Stephen", "email": "stephen@realnation.ie", "role": "admin", "password": ""}
                 ]
+                return self._cached_users
                     
             except gspread.WorksheetNotFound:
                 print(f"⚠️  '{self.users_tab}' tab not found - using demo mode")
                 print(f"📋 Please create a '{self.users_tab}' tab in your Google Sheet")
-                return [
+                self._cached_users = [
                     {"name": "Kay", "email": "kay@realnation.ie", "role": "admin", "password": ""},
                     {"name": "Stephen", "email": "stephen@realnation.ie", "role": "admin", "password": ""}
                 ]
+                return self._cached_users
             except Exception as e:
                 print(f"⚠️  Could not access users sheet: {str(e)}")
                 return [
@@ -887,7 +894,11 @@ class TimeTrackerApp:
             self.spreadsheet_id = None
     
     def connect_to_sheets(self):
-        """Connect to Google Sheets"""
+        """Connect to Google Sheets (cached to avoid recreating connections)"""
+        # Return cached connection if it exists
+        if hasattr(self, 'sheet_client') and hasattr(self, 'spreadsheet') and self.sheet_client and self.spreadsheet:
+            return True
+            
         try:
             if not self.credentials or not self.spreadsheet_id:
                 print("⚠️  No Google Sheets credentials or spreadsheet ID found")
@@ -1246,8 +1257,11 @@ def main():
     if 'show_debug' not in st.session_state:
         st.session_state.show_debug = False
     
-    # Create app instance (used for utility functions)
-    app = TimeTrackerApp()
+    # Create app instance ONCE and cache it in session state to avoid memory leaks
+    if 'app_instance' not in st.session_state:
+        st.session_state.app_instance = TimeTrackerApp()
+    
+    app = st.session_state.app_instance
     
     # Show debug info if credentials failed to load
     if not app.credentials and st.session_state.get('show_debug', False):
