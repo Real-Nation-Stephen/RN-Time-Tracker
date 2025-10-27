@@ -162,6 +162,27 @@ st.markdown("""
         color: #ffffff !important;
     }
     
+    /* File uploader button styling - white text on browse button */
+    .stFileUploader button,
+    .stFileUploader button span,
+    .stFileUploader button p,
+    .stFileUploader button div,
+    .stFileUploader button * {
+        background-color: #1f4e79 !important;
+        border-color: #1f4e79 !important;
+        color: #ffffff !important;
+    }
+    
+    .stFileUploader button:hover,
+    .stFileUploader button:hover span,
+    .stFileUploader button:hover p,
+    .stFileUploader button:hover div,
+    .stFileUploader button:hover * {
+        background-color: #163a5f !important;
+        border-color: #163a5f !important;
+        color: #ffffff !important;
+    }
+    
     /* Sidebar styling - light and clean */
     section[data-testid="stSidebar"] {
         background-color: #f8f9fa;
@@ -428,6 +449,8 @@ class TimeTrackerApp:
                 print(f"✅ Found {len(records)} records in Users sheet")
                 
                 users = []
+                admin_emails = ["stephen.maguire@realnation.ie", "kay.mckeon@realnation.ie"]
+                
                 for record in records:
                     # Map columns from the sheet (Name, Email, Password, Profile Image)
                     name = str(record.get('Name', '')).strip()
@@ -435,10 +458,12 @@ class TimeTrackerApp:
                     password = str(record.get('Password', '')).strip()
                     
                     if name and email:
-                            users.append({
+                        # Determine role based on email address
+                        role = "admin" if email.lower() in admin_emails else "user"
+                        users.append({
                             "name": name,
                             "email": email,
-                            "role": "admin",  # For now, all users from this sheet are admins
+                            "role": role,
                             "password": password
                         })
                 
@@ -925,8 +950,67 @@ class TimeTrackerApp:
             print(f"🔍 Error type: {type(e).__name__}")
             return False
     
+    def save_to_backup_sheet(self, entries: List[Dict]) -> bool:
+        """Save entries to backup sheet (weekly backup)"""
+        try:
+            if not self.connect_to_sheets():
+                return False
+            
+            backup_tab_name = 'Time Entries Backup'
+            
+            # Get or create backup worksheet
+            try:
+                backup_sheet = self.spreadsheet.worksheet(backup_tab_name)
+            except gspread.WorksheetNotFound:
+                print(f"⚠️  '{backup_tab_name}' tab not found, creating it...")
+                backup_sheet = self.spreadsheet.add_worksheet(
+                    title=backup_tab_name, 
+                    rows=5000, 
+                    cols=13
+                )
+                # Add header row
+                headers = [
+                    'Date', 'Start Time', 'End Time', 'Duration', 
+                    'Project Code', 'Job Number', 'Client', 'Project', 
+                    'Job', 'Version', 'User Email', 'Timestamp', 'Backup Date'
+                ]
+                backup_sheet.append_row(headers)
+            
+            # Prepare data for backup
+            data = []
+            backup_timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            for entry in entries:
+                row = [
+                    entry.get('date', ''),
+                    entry.get('start_time', ''),
+                    entry.get('end_time', ''),
+                    entry.get('duration', ''),
+                    entry.get('project_code', ''),
+                    entry.get('job_number', ''),
+                    entry.get('client', ''),
+                    entry.get('project', ''),
+                    entry.get('job', ''),
+                    entry.get('version', ''),
+                    entry.get('user_email', self.user_email),
+                    entry.get('timestamp', datetime.now().strftime('%Y-%m-%d %H:%M:%S')),
+                    backup_timestamp
+                ]
+                data.append(row)
+            
+            # Append to backup sheet
+            if data:
+                backup_sheet.append_rows(data)
+                print(f"✅ Backed up {len(data)} entries to backup sheet")
+                return True
+            return False
+            
+        except Exception as e:
+            print(f"⚠️  Backup failed (non-critical): {str(e)}")
+            # Don't fail the main save if backup fails
+            return False
+    
     def save_time_entries(self, entries: List[Dict]) -> bool:
-        """Save time entries to Google Sheets (checking for duplicates)"""
+        """Save time entries to Google Sheets (checking for duplicates) with automatic backup"""
         try:
             if not self.connect_to_sheets():
                 return False
@@ -989,8 +1073,16 @@ class TimeTrackerApp:
             if data:
                 time_entries_sheet.append_rows(data)
                 print(f"✅ Saved {len(data)} new entries to Google Sheets")
+                
+                # Also save to backup sheet (non-blocking)
+                try:
+                    self.save_to_backup_sheet(entries)
+                except Exception as backup_error:
+                    print(f"⚠️  Backup failed (non-critical): {str(backup_error)}")
+                
                 if skipped > 0:
                     st.info(f"ℹ️ {skipped} duplicate entries were skipped (already in sheet)")
+                st.success(f"✅ Data saved and backed up successfully!")
                 return True
             elif skipped > 0:
                 st.warning(f"⚠️ All {skipped} entries already exist - no new data saved")
@@ -1085,6 +1177,7 @@ class TimeTrackerApp:
         try:
             if not self.smtp_settings:
                 print("⚠️  Email settings not configured")
+                st.error("⚠️ Email settings not configured. Please add GMAIL_SMTP_SETTINGS to your secrets.")
                 return False
             
             # Get current week's data
@@ -1156,7 +1249,9 @@ class TimeTrackerApp:
             return True
             
         except Exception as e:
-            st.error(f"Failed to send email: {str(e)}")
+            error_msg = f"Failed to send email: {str(e)}"
+            print(f"❌ Email error: {error_msg}")
+            st.error(error_msg)
             return False
     
     def export_to_excel(self, data: pd.DataFrame, filename: str = None) -> bytes:
