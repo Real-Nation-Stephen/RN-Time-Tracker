@@ -2836,34 +2836,34 @@ def show_time_tracker(app):
                                     col1, col2 = st.columns(2)
                                     with col1:
                                         st.markdown("**❌ Old Entry:**")
-                                        st.text(f"Time: {old.get('Start Time')}-{old.get('End Time')}")
-                                        st.text(f"Project: {old.get('Project Code')} - {old.get('Project')}")
-                                        st.text(f"Job: {old.get('Job')}")
-                                        st.text(f"Client: {old.get('Client')}")
-                                        st.text(f"Version: {old.get('Version')}")
+                                        st.markdown(f"<div style='color: #212529;'>Time: {old.get('Start Time')}-{old.get('End Time')}</div>", unsafe_allow_html=True)
+                                        st.markdown(f"<div style='color: #212529;'>Project: {old.get('Project Code')} - {old.get('Project')}</div>", unsafe_allow_html=True)
+                                        st.markdown(f"<div style='color: #212529;'>Job: {old.get('Job')}</div>", unsafe_allow_html=True)
+                                        st.markdown(f"<div style='color: #212529;'>Client: {old.get('Client')}</div>", unsafe_allow_html=True)
+                                        st.markdown(f"<div style='color: #212529;'>Version: {old.get('Version')}</div>", unsafe_allow_html=True)
                                     with col2:
                                         st.markdown("**✅ New Entry:**")
-                                        st.text(f"Time: {new.get('start_time')}-{new.get('end_time')}")
-                                        st.text(f"Project: {new.get('project_code')} - {new.get('project')}")
-                                        st.text(f"Job: {new.get('job')}")
-                                        st.text(f"Client: {new.get('client')}")
-                                        st.text(f"Version: {new.get('version')}")
-                                else:  # AIBFS
+                                        st.markdown(f"<div style='color: #212529;'>Time: {new.get('start_time')}-{new.get('end_time')}</div>", unsafe_allow_html=True)
+                                        st.markdown(f"<div style='color: #212529;'>Project: {new.get('project_code')} - {new.get('project')}</div>", unsafe_allow_html=True)
+                                        st.markdown(f"<div style='color: #212529;'>Job: {new.get('job')}</div>", unsafe_allow_html=True)
+                                        st.markdown(f"<div style='color: #212529;'>Client: {new.get('client')}</div>", unsafe_allow_html=True)
+                                        st.markdown(f"<div style='color: #212529;'>Version: {new.get('version')}</div>", unsafe_allow_html=True)
+                                else:  # AIBFS or BCR
                                     col1, col2 = st.columns(2)
                                     with col1:
                                         st.markdown("**❌ Old AIBFS Entry:**")
-                                        st.text(f"Time: {old.get('Start Time')}-{old.get('End Time')}")
-                                        st.text(f"Job: {old.get('Job Number')}")
-                                        st.text(f"Suite: {old.get('Suite')}")
-                                        st.text(f"Group: {old.get('Group')}")
-                                        st.text(f"Doc: {old.get('Document')}")
+                                        st.markdown(f"<div style='color: #212529;'>Time: {old.get('Start Time')}-{old.get('End Time')}</div>", unsafe_allow_html=True)
+                                        st.markdown(f"<div style='color: #212529;'>Job: {old.get('Job Number')}</div>", unsafe_allow_html=True)
+                                        st.markdown(f"<div style='color: #212529;'>Suite: {old.get('Suite')}</div>", unsafe_allow_html=True)
+                                        st.markdown(f"<div style='color: #212529;'>Group: {old.get('Group')}</div>", unsafe_allow_html=True)
+                                        st.markdown(f"<div style='color: #212529;'>Doc: {old.get('Document')}</div>", unsafe_allow_html=True)
                                     with col2:
                                         st.markdown("**✅ New AIBFS Entry:**")
-                                        st.text(f"Time: {new.get('start_time')}-{new.get('end_time')}")
-                                        st.text(f"Job: {new.get('job_number')}")
-                                        st.text(f"Suite: {new.get('suite')}")
-                                        st.text(f"Group: {new.get('group')}")
-                                        st.text(f"Doc: {new.get('document')}")
+                                        st.markdown(f"<div style='color: #212529;'>Time: {new.get('start_time')}-{new.get('end_time')}</div>", unsafe_allow_html=True)
+                                        st.markdown(f"<div style='color: #212529;'>Job: {new.get('job_number')}</div>", unsafe_allow_html=True)
+                                        st.markdown(f"<div style='color: #212529;'>Suite: {new.get('suite')}</div>", unsafe_allow_html=True)
+                                        st.markdown(f"<div style='color: #212529;'>Group: {new.get('group')}</div>", unsafe_allow_html=True)
+                                        st.markdown(f"<div style='color: #212529;'>Doc: {new.get('document')}</div>", unsafe_allow_html=True)
                             
                             st.markdown("---")
                     
@@ -2875,24 +2875,24 @@ def show_time_tracker(app):
                         if st.button("✅ Yes, Overwrite", type="primary", use_container_width=True, key="overwrite_yes"):
                             # Save with overwrite
                             if app.save_time_entries(st.session_state.entries_to_save, overwrite_conflicts=True):
-                                st.balloons()
-                                st.success("🎉 Week marked complete! Old entries have been updated with new calendar data.")
-                                # Reset states
+                                # Reset states first
                                 st.session_state.conflict_check_done = False
                                 st.session_state.conflict_data = None
                                 st.session_state.entries_to_save = None
-                                st.rerun()
+                                # Show celebration AFTER resetting states
+                                st.balloons()
+                                st.success("🎉 Week marked complete! Old entries have been updated with new calendar data.")
+                                st.info("📋 You can now upload a new week or view your dashboard.")
                             else:
                                 st.error("❌ Failed to save entries. Please try again.")
                     
                     with col2:
                         if st.button("❌ No, Cancel", use_container_width=True, key="overwrite_no"):
-                            st.info("ℹ️ Upload cancelled. No changes were made to existing entries.")
                             # Reset states
                             st.session_state.conflict_check_done = False
                             st.session_state.conflict_data = None
                             st.session_state.entries_to_save = None
-                            st.rerun()
+                            st.info("ℹ️ Upload cancelled. No changes were made to existing entries.")
                     
                     with col3:
                         st.caption(f"💡 {len(conflict_result.get('clean_entries', []))} entries have no conflicts and will be saved")
