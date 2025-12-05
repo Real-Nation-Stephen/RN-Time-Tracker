@@ -68,12 +68,12 @@ USERS_TAB_NAME = "Users"
 TIME_ENTRIES_TAB_NAME = "Time Entries"
 PROJECTS_TAB_NAME = "Projects"
 
-# Gmail SMTP Settings (optional - for email alerts)
+# Gmail SMTP Settings (for weekly email alerts)
 [GMAIL_SMTP_SETTINGS]
-smtp_server = "smtp.gmail.com"
-smtp_port = 587
-email = "kay@realnation.ie"
-app_password = "kfve rbuj jlvf nefw"
+EMAIL_ADDRESS = "stephen.maguire@realnation.ie"
+EMAIL_PASSWORD = "kfve rbuj jlvf nefw"
+SMTP_SERVER = "smtp.gmail.com"
+SMTP_PORT = 587
 ```
 
 5. Click **Save**
