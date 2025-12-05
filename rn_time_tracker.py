@@ -2209,6 +2209,11 @@ def main():
     
     app = st.session_state.app_instance
     
+    # Force reload credentials if they're missing (e.g., after app restart)
+    if not app.credentials:
+        print("⚠️  Credentials missing from cached app instance, reloading...")
+        app.load_credentials()
+    
     # Show debug info if credentials failed to load
     if not app.credentials and st.session_state.get('show_debug', False):
         st.error("⚠️ Failed to load Google Sheets credentials")
