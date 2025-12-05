@@ -718,9 +718,195 @@ class TimeTrackerApp:
         
         return None
     
+    def parse_aibfs_title(self, title: str) -> Dict:
+        """Parse AIB Future Sparks event titles
+        Format: D1436-47_AIBFS_Business_SC_StudentWorkbook_Insurance_v1
+        - D1436-47 = Job Number
+        - AIBFS = Project
+        - Business = Suite
+        - SC = Group (if missing '_JC_', '_SC_', or '_TY_', mark as 'NA')
+        - StudentWorkbook = Document Type
+        - Insurance = Document
+        - v1 = Version
+        """
+        result = {
+            'job_number': '',
+            'project': '',
+            'suite': '',
+            'group': '',
+            'document_type': '',
+            'document': '',
+            'version': '',
+            'parsed': False,
+            'is_aibfs': True
+        }
+        
+        # Check if this is an AIB Future Sparks entry
+        if '_AIBFS_' not in title:
+            return result
+        
+        # Extract Job Number (Dxxx-xx at the beginning)
+        job_match = re.match(r'^(D\d+-\d+)', title)
+        if job_match:
+            result['job_number'] = job_match.group(1)
+        
+        # Split by underscores
+        parts = title.split('_')
+        
+        # Find AIBFS position
+        try:
+            aibfs_index = parts.index('AIBFS')
+            result['project'] = 'AIBFS'
+            
+            # Extract remaining parts after AIBFS
+            remaining_parts = parts[aibfs_index + 1:]
+            
+            # Determine group by checking for specific keywords
+            group_found = False
+            for i, part in enumerate(remaining_parts):
+                if part in ['JC', 'SC', 'TY']:
+                    result['group'] = part
+                    group_found = True
+                    # Suite is before group, document_type is after
+                    if i > 0:
+                        result['suite'] = remaining_parts[i-1]
+                    if i + 1 < len(remaining_parts):
+                        result['document_type'] = remaining_parts[i+1]
+                    if i + 2 < len(remaining_parts):
+                        result['document'] = remaining_parts[i+2]
+                    break
+            
+            # If no group found, mark as NA and parse what we can
+            if not group_found:
+                result['group'] = 'NA'
+                if len(remaining_parts) >= 1:
+                    result['suite'] = remaining_parts[0]
+                if len(remaining_parts) >= 2:
+                    result['document_type'] = remaining_parts[1]
+                if len(remaining_parts) >= 3:
+                    result['document'] = remaining_parts[2]
+            
+            # Extract version (look for _v or _AW at the end)
+            for part in reversed(remaining_parts):
+                if part.startswith('v') or part == 'AW':
+                    result['version'] = part
+                    break
+            
+            result['parsed'] = True
+            
+        except ValueError:
+            # AIBFS not found in parts - shouldn't happen but handle gracefully
+            result['parsed'] = False
+        
+        return result
+    
+    def parse_bcr_title(self, title: str) -> Dict:
+        """Parse BCR (Breakthrough Cancer Research) event titles
+        Format examples:
+        - BCR_01_Entrance_OSL_Dympna_380x590mm_V1
+        - BCR157_WhatCausesCancer_1_3_2_02_OL_200x160mm v1
+        - BCR160_WhatCausesCancer_1_3_3_07_OL_200x160mm_AW
+        
+        Returns: {job, section, job_details, version, needs_review, is_bcr}
+        """
+        
+        # Predefined sections list
+        bcr_sections = [
+            'Entrance', 'WhatIsCancer', 'WhatCausesCancer', 'Screening', 'Diagnosis',
+            'Treatment_Chemo', 'Treatment_Clinical', 'Treatment_Immunotherapy', 
+            'Treatment_Radiotherapy', 'Treament_Target', 'Treatment_Surgery',
+            'LWAC_PCare', 'NewHorizons', 'FacCanTog', 'TakeAction', '3D_Renders',
+            '365 Installation', 'All/Varied', 'Tristian_AW_Supplied',
+            'NewHorizons_ALL', 'NewHorizons_NXG', 'NewHorizons_ED', 'NewHorizons_IMAX',
+            'NewHorizons_EV', 'NewHorizons_POI', 'NewHorizons_TDD', 'NewHorizons_SUR',
+            'Shopping Center'
+        ]
+        
+        result = {
+            'job': '',
+            'section': '',
+            'job_details': '',
+            'version': '',
+            'needs_review': False,
+            'parsed': False,
+            'is_bcr': True
+        }
+        
+        # Check if this is a BCR entry
+        if not re.match(r'^BCR', title, re.IGNORECASE):
+            result['is_bcr'] = False
+            return result
+        
+        # Extract BCR job number (BCR or BCR{Number})
+        bcr_match = re.match(r'^(BCR_?\d*)_?', title, re.IGNORECASE)
+        if bcr_match:
+            result['job'] = bcr_match.group(1).upper()
+            remaining = title[len(bcr_match.group(0)):]
+        else:
+            result['needs_review'] = True
+            return result
+        
+        # Find the section (case insensitive)
+        section_found = None
+        section_end_idx = -1
+        for section in bcr_sections:
+            # Case insensitive search
+            pattern = re.escape(section).replace(r'\ ', r'[\s_]')  # Allow space or underscore
+            match = re.search(pattern, remaining, re.IGNORECASE)
+            if match:
+                section_found = section
+                section_end_idx = match.end()
+                break
+        
+        if section_found:
+            result['section'] = section_found
+            # Everything after section
+            after_section = remaining[section_end_idx:].lstrip('_').strip()
+        else:
+            # If no section found, mark for review
+            result['section'] = 'Unknown'
+            result['needs_review'] = True
+            after_section = remaining.strip('_').strip()
+        
+        # Find measurement pattern (NNxNNmm or similar variations)
+        measurement_pattern = r'(\d+x\d+mm)'
+        measurement_match = re.search(measurement_pattern, after_section, re.IGNORECASE)
+        
+        if measurement_match:
+            # Job details is everything from start to end of measurement
+            job_end_idx = measurement_match.end()
+            result['job_details'] = after_section[:job_end_idx].strip('_').strip()
+            
+            # Version is everything after measurement
+            version_part = after_section[job_end_idx:].strip('_').strip()
+            
+            # Extract version (vN, VN, AW)
+            version_match = re.search(r'(v\d+|AW\d*)', version_part, re.IGNORECASE)
+            if version_match:
+                result['version'] = version_match.group(1).upper()
+            elif version_part:
+                # If there's text after measurement but doesn't match pattern
+                result['version'] = version_part
+                result['needs_review'] = True
+        else:
+            # No measurement found - everything is job details
+            result['job_details'] = after_section.strip('_').strip()
+            result['needs_review'] = True
+        
+        result['parsed'] = True
+        return result
+    
     def parse_event_title(self, title: str) -> Dict:
         """Parse event title to extract project information"""
-        # First, check for auto-taggable common activities
+        # First, check if this is an AIB Future Sparks entry
+        if '_AIBFS_' in title:
+            return self.parse_aibfs_title(title)
+        
+        # Check if this is a BCR entry
+        if re.match(r'^BCR', title, re.IGNORECASE):
+            return self.parse_bcr_title(title)
+        
+        # Then check for auto-taggable common activities
         auto_tag = self.auto_tag_common_activities(title)
         if auto_tag:
             return auto_tag
@@ -872,7 +1058,18 @@ class TimeTrackerApp:
                         self.time_entries_tab = st.secrets.get("TIME_ENTRIES_TAB_NAME", "Time Entries")
                         
                         if 'GMAIL_SMTP_SETTINGS' in st.secrets:
-                            self.smtp_settings = dict(st.secrets['GMAIL_SMTP_SETTINGS'])
+                            smtp_config = dict(st.secrets['GMAIL_SMTP_SETTINGS'])
+                            # Normalize keys to lowercase for compatibility
+                            app_password = smtp_config.get('EMAIL_PASSWORD', smtp_config.get('app_password', ''))
+                            # Remove spaces from app password (Gmail format is "xxxx xxxx xxxx xxxx" but needs "xxxxxxxxxxxxxxxx")
+                            app_password = app_password.replace(' ', '').strip()
+                            
+                            self.smtp_settings = {
+                                'email': smtp_config.get('EMAIL_ADDRESS', smtp_config.get('email', '')),
+                                'app_password': app_password,
+                                'smtp_server': smtp_config.get('SMTP_SERVER', smtp_config.get('smtp_server', 'smtp.gmail.com')),
+                                'smtp_port': smtp_config.get('SMTP_PORT', smtp_config.get('smtp_port', 587))
+                            }
                         else:
                             self.smtp_settings = None
                         
@@ -896,7 +1093,20 @@ class TimeTrackerApp:
                 TIME_ENTRIES_TAB_NAME
             )
             self.credentials = GOOGLE_SHEETS_CREDENTIALS
-            self.smtp_settings = GMAIL_SMTP_SETTINGS
+            # Normalize SMTP settings keys
+            if GMAIL_SMTP_SETTINGS:
+                app_password = GMAIL_SMTP_SETTINGS.get('EMAIL_PASSWORD', GMAIL_SMTP_SETTINGS.get('app_password', ''))
+                # Remove spaces from app password (Gmail format is "xxxx xxxx xxxx xxxx" but needs "xxxxxxxxxxxxxxxx")
+                app_password = app_password.replace(' ', '').strip()
+                
+                self.smtp_settings = {
+                    'email': GMAIL_SMTP_SETTINGS.get('EMAIL_ADDRESS', GMAIL_SMTP_SETTINGS.get('email', '')),
+                    'app_password': app_password,
+                    'smtp_server': GMAIL_SMTP_SETTINGS.get('SMTP_SERVER', GMAIL_SMTP_SETTINGS.get('smtp_server', 'smtp.gmail.com')),
+                    'smtp_port': GMAIL_SMTP_SETTINGS.get('SMTP_PORT', GMAIL_SMTP_SETTINGS.get('smtp_port', 587))
+                }
+            else:
+                self.smtp_settings = None
             self.spreadsheet_id = SPREADSHEET_ID
             self.users_tab = USERS_TAB_NAME
             self.time_entries_tab = TIME_ENTRIES_TAB_NAME
@@ -1009,12 +1219,196 @@ class TimeTrackerApp:
             # Don't fail the main save if backup fails
             return False
     
-    def save_time_entries(self, entries: List[Dict]) -> bool:
-        """Save time entries to Google Sheets (checking for duplicates) with automatic backup"""
+    def check_for_conflicts(self, entries: List[Dict]) -> Dict:
+        """Check entries for conflicts with existing data
+        Returns: {'conflicts': [...], 'clean_entries': [...], 'duplicates': [...]}
+        """
+        try:
+            if not self.connect_to_sheets():
+                return {'conflicts': [], 'clean_entries': entries, 'duplicates': []}
+            
+            standard_entries = [e for e in entries if not e.get('is_aibfs', False)]
+            aibfs_entries = [e for e in entries if e.get('is_aibfs', False)]
+            
+            conflicts = []
+            clean_entries = []
+            duplicates = []
+            
+            # Check standard entries
+            if standard_entries:
+                try:
+                    std_sheet = self.spreadsheet.worksheet(self.time_entries_tab)
+                    existing_std = std_sheet.get_all_records()
+                except:
+                    existing_std = []
+                
+                for entry in standard_entries:
+                    overlaps = self._find_overlapping_entries(entry, existing_std, is_aibfs=False)
+                    
+                    if not overlaps:
+                        clean_entries.append(entry)
+                    else:
+                        # Check if all overlaps are identical duplicates
+                        all_identical = all(o['is_identical'] for o in overlaps)
+                        if all_identical:
+                            duplicates.append(entry)
+                        else:
+                            conflicts.append({
+                                'new_entry': entry,
+                                'overlapping': overlaps,
+                                'type': 'standard'
+                            })
+            
+            # Check AIBFS entries
+            if aibfs_entries:
+                try:
+                    aibfs_sheet = self.spreadsheet.worksheet('AIB Future Sparks')
+                    existing_aibfs = aibfs_sheet.get_all_records()
+                except:
+                    existing_aibfs = []
+                
+                for entry in aibfs_entries:
+                    overlaps = self._find_overlapping_entries(entry, existing_aibfs, is_aibfs=True)
+                    
+                    if not overlaps:
+                        clean_entries.append(entry)
+                    else:
+                        all_identical = all(o['is_identical'] for o in overlaps)
+                        if all_identical:
+                            duplicates.append(entry)
+                        else:
+                            conflicts.append({
+                                'new_entry': entry,
+                                'overlapping': overlaps,
+                                'type': 'aibfs'
+                            })
+            
+            return {
+                'conflicts': conflicts,
+                'clean_entries': clean_entries,
+                'duplicates': duplicates
+            }
+            
+        except Exception as e:
+            print(f"❌ Error checking conflicts: {str(e)}")
+            return {'conflicts': [], 'clean_entries': entries, 'duplicates': []}
+    
+    def save_time_entries(self, entries: List[Dict], overwrite_conflicts: bool = False) -> bool:
+        """Save time entries to Google Sheets with optional overwrite"""
         try:
             if not self.connect_to_sheets():
                 return False
             
+            # Separate standard, AIBFS, and BCR entries
+            standard_entries = [e for e in entries if not e.get('is_aibfs', False) and not e.get('is_bcr', False)]
+            aibfs_entries = [e for e in entries if e.get('is_aibfs', False)]
+            bcr_entries = [e for e in entries if e.get('is_bcr', False)]
+            
+            success = True
+            
+            # Save standard entries
+            if standard_entries:
+                success = success and self._save_standard_entries(standard_entries, overwrite_conflicts)
+            
+            # Save AIBFS entries
+            if aibfs_entries:
+                success = success and self._save_aibfs_entries(aibfs_entries, overwrite_conflicts)
+            
+            # Save BCR entries
+            if bcr_entries:
+                success = success and self._save_bcr_entries(bcr_entries, overwrite_conflicts)
+            
+            return success
+            
+        except Exception as e:
+            st.error(f"Failed to save entries: {str(e)}")
+            print(f"❌ Error saving entries: {str(e)}")
+            return False
+    
+    def _find_overlapping_entries(self, new_entry: Dict, existing_records: List[Dict], is_aibfs: bool = False, is_bcr: bool = False) -> List[Dict]:
+        """Find all existing entries that overlap with a new entry
+        Returns: List of overlapping existing entries with metadata
+        """
+        try:
+            from datetime import datetime, time
+            
+            date = new_entry.get('date', '')
+            start_time = new_entry.get('start_time', '')
+            end_time = new_entry.get('end_time', '')
+            user_email = new_entry.get('user_email', '')
+            
+            # Parse the new entry times
+            new_start = datetime.strptime(start_time, '%H:%M').time()
+            new_end = datetime.strptime(end_time, '%H:%M').time()
+            
+            overlapping = []
+            
+            for idx, record in enumerate(existing_records):
+                # Only check entries for same user and same date
+                if record.get('User Email') != user_email or record.get('Date') != date:
+                    continue
+                
+                try:
+                    # Parse existing entry times
+                    existing_start = datetime.strptime(str(record.get('Start Time')), '%H:%M').time()
+                    existing_end = datetime.strptime(str(record.get('End Time')), '%H:%M').time()
+                    
+                    # Check for overlap
+                    if (new_start < existing_end and new_end > existing_start):
+                        # Check if it's an identical duplicate
+                        is_identical = (
+                            record.get('Date') == date and
+                            record.get('Start Time') == start_time and
+                            record.get('End Time') == end_time
+                        )
+                        
+                        if is_bcr:
+                            # BCR entry comparison
+                            is_identical = is_identical and (
+                                record.get('Job', '') == new_entry.get('job', '') and
+                                record.get('Section', '') == new_entry.get('section', '') and
+                                record.get('Job Details', '') == new_entry.get('job_details', '') and
+                                record.get('Version', '') == new_entry.get('version', '')
+                            )
+                        elif is_aibfs:
+                            # AIBFS entry comparison
+                            is_identical = is_identical and (
+                                record.get('Job Number', '') == new_entry.get('job_number', '') and
+                                record.get('Suite', '') == new_entry.get('suite', '') and
+                                record.get('Group', '') == new_entry.get('group', '') and
+                                record.get('Document Type', '') == new_entry.get('document_type', '') and
+                                record.get('Document', '') == new_entry.get('document', '') and
+                                record.get('Version', '') == new_entry.get('version', '')
+                            )
+                        else:
+                            # Standard entry comparison
+                            is_identical = is_identical and (
+                                record.get('Project Code', '') == new_entry.get('project_code', '') and
+                                record.get('Job Number', '') == new_entry.get('job_number', '') and
+                                record.get('Client', '') == new_entry.get('client', '') and
+                                record.get('Project', '') == new_entry.get('project', '') and
+                                record.get('Job', '') == new_entry.get('job', '') and
+                                record.get('Version', '') == new_entry.get('version', '')
+                            )
+                        
+                        overlapping.append({
+                            'record': record,
+                            'index': idx,
+                            'is_identical': is_identical
+                        })
+                        
+                except ValueError:
+                    continue
+            
+            return overlapping
+            
+        except Exception as e:
+            print(f"⚠️  Error finding overlaps: {str(e)}")
+            return []
+    
+    def _save_standard_entries(self, entries: List[Dict], overwrite_conflicts: bool = False) -> bool:
+        """Save standard time entries to Google Sheets"""
+        try:
             # Get the Time Entries worksheet
             try:
                 time_entries_sheet = self.spreadsheet.worksheet(self.time_entries_tab)
@@ -1034,24 +1428,32 @@ class TimeTrackerApp:
                 ]
                 time_entries_sheet.append_row(headers)
             
-            # Get existing entries to check for duplicates
+            # Get existing entries
             existing_records = time_entries_sheet.get_all_records()
-            existing_keys = set()
-            for record in existing_records:
-                # Create unique key: date + start_time + end_time + user_email
-                key = f"{record.get('Date')}_{record.get('Start Time')}_{record.get('End Time')}_{record.get('User Email')}"
-                existing_keys.add(key)
+            rows_to_delete = []
             
-            # Prepare data for Google Sheets (filter out duplicates)
+            # Prepare data
             data = []
-            skipped = 0
+            skipped_duplicates = 0
+            
             for entry in entries:
-                entry_key = f"{entry.get('date')}_{entry.get('start_time')}_{entry.get('end_time')}_{entry.get('user_email', self.user_email)}"
+                overlaps = self._find_overlapping_entries(entry, existing_records, is_aibfs=False)
                 
-                if entry_key in existing_keys:
-                    skipped += 1
-                    print(f"⚠️  Skipping duplicate: {entry.get('date')} {entry.get('start_time')}-{entry.get('end_time')}")
+                if overlaps:
+                    # Check if all are identical duplicates
+                    if all(o['is_identical'] for o in overlaps):
+                        skipped_duplicates += 1
+                        print(f"⏭️  Skipping identical duplicate: {entry.get('date')} {entry.get('start_time')}-{entry.get('end_time')}")
                     continue
+                    
+                    # If overwrite is enabled, mark old rows for deletion
+                    if overwrite_conflicts:
+                        for overlap in overlaps:
+                            # Row numbers are 1-indexed, and we need to account for header row
+                            row_num = overlap['index'] + 2  # +1 for 0-index to 1-index, +1 for header
+                            if row_num not in rows_to_delete:
+                                rows_to_delete.append(row_num)
+                        print(f"🔄 Overwriting: {entry.get('date')} {entry.get('start_time')}-{entry.get('end_time')}")
                 
                 row = [
                     entry.get('date', ''),
@@ -1069,85 +1471,364 @@ class TimeTrackerApp:
                 ]
                 data.append(row)
             
-            # Append to worksheet
+            # Delete overlapping rows (in reverse order to maintain indices)
+            if rows_to_delete:
+                rows_to_delete.sort(reverse=True)
+                for row_num in rows_to_delete:
+                    try:
+                        time_entries_sheet.delete_rows(row_num)
+                        print(f"🗑️  Deleted row {row_num}")
+                    except Exception as e:
+                        print(f"⚠️  Failed to delete row {row_num}: {str(e)}")
+            
+            # Append new data
             if data:
                 time_entries_sheet.append_rows(data)
-                print(f"✅ Saved {len(data)} new entries to Google Sheets")
+                print(f"✅ Saved {len(data)} standard entries to Google Sheets")
                 
-                # Also save to backup sheet (non-blocking)
+                # Backup
                 try:
                     self.save_to_backup_sheet(entries)
                 except Exception as backup_error:
                     print(f"⚠️  Backup failed (non-critical): {str(backup_error)}")
                 
-                if skipped > 0:
-                    st.info(f"ℹ️ {skipped} duplicate entries were skipped (already in sheet)")
-                st.success(f"✅ Data saved and backed up successfully!")
+                if skipped_duplicates > 0:
+                    st.info(f"ℹ️ {skipped_duplicates} identical duplicate(s) skipped")
+                
                 return True
-            elif skipped > 0:
-                st.warning(f"⚠️ All {skipped} entries already exist - no new data saved")
+            elif skipped_duplicates > 0:
+                st.info(f"ℹ️ All {skipped_duplicates} entries are identical duplicates - no changes needed")
                 return True
+            
             return False
             
         except Exception as e:
-            st.error(f"Failed to save entries: {str(e)}")
-            print(f"❌ Error saving entries: {str(e)}")
+            st.error(f"Failed to save standard entries: {str(e)}")
+            print(f"❌ Error saving standard entries: {str(e)}")
+            import traceback
+            print(traceback.format_exc())
             return False
     
-    def get_time_entries(self, start_date: datetime, end_date: datetime, user_filter: str = None) -> pd.DataFrame:
-        """Retrieve time entries from Google Sheets"""
+    def _save_aibfs_entries(self, entries: List[Dict], overwrite_conflicts: bool = False) -> bool:
+        """Save AIB Future Sparks entries to Google Sheets"""
+        try:
+            aibfs_tab = 'AIB Future Sparks'
+            
+            # Get or create AIBFS worksheet
+            try:
+                aibfs_sheet = self.spreadsheet.worksheet(aibfs_tab)
+            except gspread.WorksheetNotFound:
+                print(f"⚠️  '{aibfs_tab}' tab not found, creating it...")
+                aibfs_sheet = self.spreadsheet.add_worksheet(
+                    title=aibfs_tab,
+                    rows=1000,
+                    cols=13
+                )
+                # Add header row for AIBFS format
+                headers = [
+                    'Date', 'Start Time', 'End Time', 'Duration',
+                    'Job Number', 'Project', 'Suite', 'Group',
+                    'Document Type', 'Document', 'Version', 'User Email', 'Timestamp'
+                ]
+                aibfs_sheet.append_row(headers)
+            
+            # Get existing entries
+            existing_records = aibfs_sheet.get_all_records()
+            rows_to_delete = []
+            
+            # Prepare data
+            data = []
+            skipped_duplicates = 0
+            
+            for entry in entries:
+                overlaps = self._find_overlapping_entries(entry, existing_records, is_aibfs=True)
+                
+                if overlaps:
+                    # Check if all are identical duplicates
+                    if all(o['is_identical'] for o in overlaps):
+                        skipped_duplicates += 1
+                        print(f"⏭️  Skipping identical AIBFS duplicate: {entry.get('date')} {entry.get('start_time')}-{entry.get('end_time')}")
+                        continue
+                    
+                    # If overwrite is enabled, mark old rows for deletion
+                    if overwrite_conflicts:
+                        for overlap in overlaps:
+                            row_num = overlap['index'] + 2
+                            if row_num not in rows_to_delete:
+                                rows_to_delete.append(row_num)
+                        print(f"🔄 Overwriting AIBFS: {entry.get('date')} {entry.get('start_time')}-{entry.get('end_time')}")
+                
+                row = [
+                    entry.get('date', ''),
+                    entry.get('start_time', ''),
+                    entry.get('end_time', ''),
+                    entry.get('duration', ''),
+                    entry.get('job_number', ''),
+                    entry.get('project', ''),
+                    entry.get('suite', ''),
+                    entry.get('group', ''),
+                    entry.get('document_type', ''),
+                    entry.get('document', ''),
+                    entry.get('version', ''),
+                    entry.get('user_email', self.user_email),
+                    datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                ]
+                data.append(row)
+            
+            # Delete overlapping rows (in reverse order)
+            if rows_to_delete:
+                rows_to_delete.sort(reverse=True)
+                for row_num in rows_to_delete:
+                    try:
+                        aibfs_sheet.delete_rows(row_num)
+                        print(f"🗑️  Deleted AIBFS row {row_num}")
+                    except Exception as e:
+                        print(f"⚠️  Failed to delete AIBFS row {row_num}: {str(e)}")
+            
+            # Append new data
+            if data:
+                aibfs_sheet.append_rows(data)
+                print(f"✅ Saved {len(data)} AIBFS entries to Google Sheets")
+                
+                if skipped_duplicates > 0:
+                    st.info(f"ℹ️ {skipped_duplicates} identical AIBFS duplicate(s) skipped")
+                
+                st.success(f"✅ AIB Future Sparks data saved successfully!")
+                return True
+            elif skipped_duplicates > 0:
+                st.info(f"ℹ️ All {skipped_duplicates} AIBFS entries are identical duplicates - no changes needed")
+                return True
+            
+            return False
+            
+        except Exception as e:
+            st.error(f"Failed to save AIBFS entries: {str(e)}")
+            print(f"❌ Error saving AIBFS entries: {str(e)}")
+            import traceback
+            print(traceback.format_exc())
+            return False
+    
+    def _save_bcr_entries(self, entries: List[Dict], overwrite_conflicts: bool = False) -> bool:
+        """Save BCR (Breakthrough Cancer Research) entries to Google Sheets"""
+        try:
+            bcr_tab = 'BCR'
+            
+            # Get or create BCR worksheet
+            try:
+                bcr_sheet = self.spreadsheet.worksheet(bcr_tab)
+            except gspread.WorksheetNotFound:
+                print(f"⚠️  '{bcr_tab}' tab not found, creating it...")
+                bcr_sheet = self.spreadsheet.add_worksheet(
+                    title=bcr_tab,
+                    rows=1000,
+                    cols=11
+                )
+                # Add header row for BCR format
+                headers = [
+                    'Date', 'Start Time', 'End Time', 'Duration',
+                    'Job', 'Section', 'Job Details', 'Version',
+                    'Needs Review', 'User Email', 'Timestamp'
+                ]
+                bcr_sheet.append_row(headers)
+            
+            # Get existing entries
+            existing_records = bcr_sheet.get_all_records()
+            rows_to_delete = []
+            
+            # Prepare data
+            data = []
+            skipped_duplicates = 0
+            
+            for entry in entries:
+                overlaps = self._find_overlapping_entries(entry, existing_records, is_aibfs=False, is_bcr=True)
+                
+                if overlaps:
+                    # Check if all are identical duplicates
+                    if all(o['is_identical'] for o in overlaps):
+                        skipped_duplicates += 1
+                        print(f"⏭️  Skipping identical BCR duplicate: {entry.get('date')} {entry.get('start_time')}-{entry.get('end_time')}")
+                        continue
+                    
+                    # If overwrite is enabled, mark old rows for deletion
+                    if overwrite_conflicts:
+                        for overlap in overlaps:
+                            row_num = overlap['index'] + 2
+                            if row_num not in rows_to_delete:
+                                rows_to_delete.append(row_num)
+                        print(f"🔄 Overwriting BCR: {entry.get('date')} {entry.get('start_time')}-{entry.get('end_time')}")
+                
+                row = [
+                    entry.get('date', ''),
+                    entry.get('start_time', ''),
+                    entry.get('end_time', ''),
+                    entry.get('duration', ''),
+                    entry.get('job', ''),
+                    entry.get('section', ''),
+                    entry.get('job_details', ''),
+                    entry.get('version', ''),
+                    'Yes' if entry.get('needs_review', False) else 'No',
+                    entry.get('user_email', self.user_email),
+                    datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                ]
+                data.append(row)
+            
+            # Delete overlapping rows (in reverse order)
+            if rows_to_delete:
+                rows_to_delete.sort(reverse=True)
+                for row_num in rows_to_delete:
+                    try:
+                        bcr_sheet.delete_rows(row_num)
+                        print(f"🗑️  Deleted BCR row {row_num}")
+                    except Exception as e:
+                        print(f"⚠️  Failed to delete BCR row {row_num}: {str(e)}")
+            
+            # Append new data
+            if data:
+                bcr_sheet.append_rows(data)
+                print(f"✅ Saved {len(data)} BCR entries to Google Sheets")
+                
+                if skipped_duplicates > 0:
+                    st.info(f"ℹ️ {skipped_duplicates} identical BCR duplicate(s) skipped")
+                
+                st.success(f"✅ BCR data saved successfully!")
+                return True
+            elif skipped_duplicates > 0:
+                st.info(f"ℹ️ All {skipped_duplicates} BCR entries are identical duplicates - no changes needed")
+                return True
+            
+            return False
+            
+        except Exception as e:
+            st.error(f"Failed to save BCR entries: {str(e)}")
+            print(f"❌ Error saving BCR entries: {str(e)}")
+            import traceback
+            print(traceback.format_exc())
+            return False
+    
+    def get_time_entries(self, start_date: datetime, end_date: datetime, user_filter: str = None) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+        """Retrieve time entries from Google Sheets - returns (standard_df, aibfs_df, bcr_df)"""
         try:
             if not self.connect_to_sheets():
                 # Return sample data if no connection
-                return self.get_sample_data(start_date, end_date)
+                return self.get_sample_data(start_date, end_date), pd.DataFrame(), pd.DataFrame()
             
-            # Get the Time Entries worksheet
+            # Get standard entries
+            standard_df = pd.DataFrame()
             try:
                 time_entries_sheet = self.spreadsheet.worksheet(self.time_entries_tab)
                 records = time_entries_sheet.get_all_records()
+                standard_df = pd.DataFrame(records)
+                
+                if not standard_df.empty:
+                    # Normalize column names
+                    standard_df.columns = [col.lower().replace(' ', '_') for col in standard_df.columns]
+                    
+                    # Convert date column
+                    if 'date' in standard_df.columns:
+                        standard_df['date'] = pd.to_datetime(standard_df['date'], errors='coerce')
+                        standard_df = standard_df[(standard_df['date'] >= start_date) & (standard_df['date'] <= end_date)]
+                    
+                    # Remove duplicates
+                    duplicate_cols = ['date', 'start_time', 'end_time', 'user_email']
+                    available_dup_cols = [col for col in duplicate_cols if col in standard_df.columns]
+                    
+                    if len(available_dup_cols) >= 3:
+                        before_dedup = len(standard_df)
+                        standard_df = standard_df.drop_duplicates(subset=available_dup_cols, keep='first')
+                        after_dedup = len(standard_df)
+                        
+                        if before_dedup > after_dedup:
+                            removed = before_dedup - after_dedup
+                            print(f"🧹 Removed {removed} duplicate standard entries")
+                    
+                    # Filter by user if specified
+                    if user_filter and 'user_email' in standard_df.columns:
+                        standard_df = standard_df[standard_df['user_email'] == user_filter]
+                        
             except gspread.WorksheetNotFound:
                 print(f"⚠️  '{self.time_entries_tab}' tab not found")
-                return self.get_sample_data(start_date, end_date)
             
-            # Convert to DataFrame
-            df = pd.DataFrame(records)
-            
-            if df.empty:
-                return self.get_sample_data(start_date, end_date)
-            
-            # Normalize column names
-            df.columns = [col.lower().replace(' ', '_') for col in df.columns]
-            
-            # Convert date column
-            if 'date' in df.columns:
-                df['date'] = pd.to_datetime(df['date'], errors='coerce')
-                df = df[(df['date'] >= start_date) & (df['date'] <= end_date)]
-            
-            # Remove duplicates based on date, start_time, end_time, user_email
-            # This handles cases where "Mark Week Complete" was clicked multiple times
-            if not df.empty:
-                duplicate_cols = ['date', 'start_time', 'end_time', 'user_email']
-                available_dup_cols = [col for col in duplicate_cols if col in df.columns]
+            # Get AIBFS entries
+            aibfs_df = pd.DataFrame()
+            try:
+                aibfs_sheet = self.spreadsheet.worksheet('AIB Future Sparks')
+                aibfs_records = aibfs_sheet.get_all_records()
+                aibfs_df = pd.DataFrame(aibfs_records)
                 
-                if len(available_dup_cols) >= 3:
-                    before_dedup = len(df)
-                    df = df.drop_duplicates(subset=available_dup_cols, keep='first')
-                    after_dedup = len(df)
+                if not aibfs_df.empty:
+                    # Normalize column names
+                    aibfs_df.columns = [col.lower().replace(' ', '_') for col in aibfs_df.columns]
                     
-                    if before_dedup > after_dedup:
-                        removed = before_dedup - after_dedup
-                        print(f"🧹 Removed {removed} duplicate entries from Google Sheets data")
-                        print(f"   (This happens when 'Mark Week Complete' is clicked multiple times)")
+                    # Convert date column
+                    if 'date' in aibfs_df.columns:
+                        aibfs_df['date'] = pd.to_datetime(aibfs_df['date'], errors='coerce')
+                        aibfs_df = aibfs_df[(aibfs_df['date'] >= start_date) & (aibfs_df['date'] <= end_date)]
+                    
+                    # Remove duplicates
+                    duplicate_cols = ['date', 'start_time', 'end_time', 'user_email']
+                    available_dup_cols = [col for col in duplicate_cols if col in aibfs_df.columns]
+                    
+                    if len(available_dup_cols) >= 3:
+                        before_dedup = len(aibfs_df)
+                        aibfs_df = aibfs_df.drop_duplicates(subset=available_dup_cols, keep='first')
+                        after_dedup = len(aibfs_df)
+                        
+                        if before_dedup > after_dedup:
+                            removed = before_dedup - after_dedup
+                            print(f"🧹 Removed {removed} duplicate AIBFS entries")
+                    
+                    # Filter by user if specified
+                    if user_filter and 'user_email' in aibfs_df.columns:
+                        aibfs_df = aibfs_df[aibfs_df['user_email'] == user_filter]
+                        
+            except gspread.WorksheetNotFound:
+                print(f"ℹ️  'AIB Future Sparks' tab not found - no AIBFS entries")
             
-            # Filter by user if specified
-            if user_filter and 'user_email' in df.columns:
-                df = df[df['user_email'] == user_filter]
+            # Get BCR entries
+            bcr_df = pd.DataFrame()
+            try:
+                bcr_sheet = self.spreadsheet.worksheet('BCR')
+                bcr_records = bcr_sheet.get_all_records()
+                bcr_df = pd.DataFrame(bcr_records)
+                
+                if not bcr_df.empty:
+                    # Normalize column names
+                    bcr_df.columns = [col.lower().replace(' ', '_') for col in bcr_df.columns]
+                    
+                    # Convert date column
+                    if 'date' in bcr_df.columns:
+                        bcr_df['date'] = pd.to_datetime(bcr_df['date'], errors='coerce')
+                        bcr_df = bcr_df[(bcr_df['date'] >= start_date) & (bcr_df['date'] <= end_date)]
+                    
+                    # Remove duplicates
+                    duplicate_cols = ['date', 'start_time', 'end_time', 'user_email']
+                    available_dup_cols = [col for col in duplicate_cols if col in bcr_df.columns]
+                    
+                    if len(available_dup_cols) >= 3:
+                        before_dedup = len(bcr_df)
+                        bcr_df = bcr_df.drop_duplicates(subset=available_dup_cols, keep='first')
+                        after_dedup = len(bcr_df)
+                        
+                        if before_dedup > after_dedup:
+                            removed = before_dedup - after_dedup
+                            print(f"🧹 Removed {removed} duplicate BCR entries")
+                    
+                    # Filter by user if specified
+                    if user_filter and 'user_email' in bcr_df.columns:
+                        bcr_df = bcr_df[bcr_df['user_email'] == user_filter]
+                        
+            except gspread.WorksheetNotFound:
+                print(f"ℹ️  'BCR' tab not found - no BCR entries")
             
-            return df if not df.empty else self.get_sample_data(start_date, end_date)
+            # Return sample data if all are empty
+            if standard_df.empty and aibfs_df.empty and bcr_df.empty:
+                return self.get_sample_data(start_date, end_date), pd.DataFrame(), pd.DataFrame()
+            
+            return standard_df, aibfs_df, bcr_df
             
         except Exception as e:
             print(f"❌ Failed to retrieve entries: {str(e)}")
-            return self.get_sample_data(start_date, end_date)
+            return self.get_sample_data(start_date, end_date), pd.DataFrame(), pd.DataFrame()
     
     def get_sample_data(self, start_date: datetime, end_date: datetime) -> pd.DataFrame:
         """Generate sample data for demonstration"""
@@ -1172,12 +1853,38 @@ class TimeTrackerApp:
         
         return pd.DataFrame(sample_data)
     
+    def _duration_to_hours(self, duration_str: str) -> float:
+        """Convert a single duration string to decimal hours
+        Examples: '1:30:00' -> 1.5, '0:45:00' -> 0.75
+        """
+        try:
+            if pd.notna(duration_str) and ':' in str(duration_str):
+                duration_str = str(duration_str)
+                if 'days' in duration_str or 'day' in duration_str:
+                    duration_str = duration_str.split(',')[-1].strip()
+                parts = duration_str.split(':')
+                hours = int(parts[0]) if len(parts) > 0 else 0
+                minutes = int(parts[1]) if len(parts) > 1 else 0
+                seconds = int(parts[2].split('.')[0]) if len(parts) > 2 else 0
+                return round(hours + (minutes / 60) + (seconds / 3600), 2)
+        except:
+            pass
+        return 0.0
+    
+    def _calculate_hours_from_duration(self, duration_series) -> float:
+        """Calculate total hours from a pandas series of duration strings"""
+        total_hours = 0
+        for duration in duration_series:
+            total_hours += self._duration_to_hours(duration)
+        return round(total_hours, 2)
+    
     def send_weekly_email_alert(self):
-        """Send weekly email alert to Kay"""
+        """Send weekly email alert to Kay with comprehensive time tracking report"""
         try:
             if not self.smtp_settings:
                 print("⚠️  Email settings not configured")
-                st.error("⚠️ Email settings not configured. Please add GMAIL_SMTP_SETTINGS to your secrets.")
+                if hasattr(st, 'error'):
+                    st.error("⚠️ Email settings not configured. Please add GMAIL_SMTP_SETTINGS to your secrets.")
                 return False
             
             # Get current week's data
@@ -1185,73 +1892,217 @@ class TimeTrackerApp:
             week_start = today - timedelta(days=today.weekday())
             week_end = week_start + timedelta(days=6)
             
-            # Get all users' data for the week
-            all_entries = self.get_time_entries(week_start, week_end)
+            # Get all users' data for the week (standard, AIBFS, and BCR)
+            standard_data, aibfs_data, bcr_data = self.get_time_entries(week_start, week_end)
             
-            # Normalize column names
-            all_entries.columns = [col.lower().replace(' ', '_') for col in all_entries.columns]
-            
-            # Check if we have data
-            if all_entries.empty or 'user_email' not in all_entries.columns:
+            # Check if we have any data
+            if standard_data.empty and aibfs_data.empty:
                 print("⚠️  No data available for email report")
                 return False
             
-            # Calculate summary
-            user_summary = all_entries.groupby('user_email').agg({
-                'duration': 'sum',
-                'project_code': 'count'
-            }).reset_index()
+            # Get unique users from both datasets
+            all_users = set()
+            if not standard_data.empty and 'user_email' in standard_data.columns:
+                all_users.update(standard_data['user_email'].unique())
+            if not aibfs_data.empty and 'user_email' in aibfs_data.columns:
+                all_users.update(aibfs_data['user_email'].unique())
+            
+            # Get all users from sheet
+            all_users_list = self.get_users_from_sheet()
+            expected_users = [u['email'] for u in all_users_list]
             
             # Create email content
-            subject = f"Weekly Time Tracking Report - {week_start.strftime('%Y-%m-%d')} to {week_end.strftime('%Y-%m-%d')}"
+            subject = f"📊 Weekly Time Tracking Report - {week_start.strftime('%b %d')} to {week_end.strftime('%b %d, %Y')}"
             
             body = f"""
-            <h2>Weekly Time Tracking Report</h2>
-            <p><strong>Week:</strong> {week_start.strftime('%Y-%m-%d')} to {week_end.strftime('%Y-%m-%d')}</p>
+            <html>
+            <head>
+                <style>
+                    body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
+                    h2 {{ color: #1f4e79; border-bottom: 2px solid #1f4e79; padding-bottom: 10px; }}
+                    h3 {{ color: #2c5f8f; margin-top: 25px; }}
+                    table {{ border-collapse: collapse; width: 100%; margin: 15px 0; }}
+                    th {{ background-color: #1f4e79; color: white; padding: 12px; text-align: left; }}
+                    td {{ padding: 10px; border-bottom: 1px solid #ddd; }}
+                    tr:hover {{ background-color: #f5f5f5; }}
+                    .completed {{ color: #28a745; font-weight: bold; }}
+                    .incomplete {{ color: #dc3545; font-weight: bold; }}
+                    .summary-box {{ background-color: #f8f9fa; padding: 15px; border-radius: 5px; margin: 15px 0; }}
+                    .footer {{ margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd; color: #666; font-size: 0.9em; }}
+                </style>
+            </head>
+            <body>
+                <h2>📊 Weekly Time Tracking Report</h2>
+                <div class="summary-box">
+                    <p><strong>📅 Week:</strong> {week_start.strftime('%A, %B %d, %Y')} to {week_end.strftime('%A, %B %d, %Y')}</p>
+                    <p><strong>👥 Expected Users:</strong> {len(expected_users)}</p>
+                    <p><strong>✅ Submitted:</strong> {len(all_users)}</p>
+                    <p><strong>⏰ Generated:</strong> {datetime.now().strftime('%A, %B %d, %Y at %I:%M %p')}</p>
+                </div>
+                
+                <h3>📋 Standard Projects Summary</h3>
+            """
             
-            <h3>Summary by User:</h3>
-            <table border="1" style="border-collapse: collapse;">
+            # Process standard data
+            if not standard_data.empty and 'user_email' in standard_data.columns:
+                body += """
+                <table>
                 <tr>
                     <th>User</th>
                     <th>Total Hours</th>
                     <th>Entries</th>
+                        <th>Projects</th>
                     <th>Status</th>
                 </tr>
             """
             
-            for _, row in user_summary.iterrows():
-                status = "✅ Completed" if row['duration'] > 0 else "❌ No entries"
+                for user_email in sorted(expected_users):
+                    user_data = standard_data[standard_data['user_email'] == user_email]
+                    
+                    if not user_data.empty:
+                        total_hours = self._calculate_hours_from_duration(user_data['duration'])
+                        entries_count = len(user_data)
+                        projects_count = user_data['project_code'].nunique() if 'project_code' in user_data.columns else 0
+                        status = f'<span class="completed">✅ Completed ({total_hours}h)</span>'
+                    else:
+                        total_hours = 0
+                        entries_count = 0
+                        projects_count = 0
+                        status = '<span class="incomplete">❌ No entries</span>'
+                    
                 body += f"""
                 <tr>
-                    <td>{row['user_email']}</td>
-                    <td>{row['duration']}</td>
-                    <td>{row['project_code']}</td>
+                    <td>{user_email}</td>
+                    <td>{total_hours:.1f}h</td>
+                    <td>{entries_count}</td>
+                    <td>{projects_count}</td>
                     <td>{status}</td>
                 </tr>
                 """
+                
+                body += "</table>"
+            else:
+                body += "<p><em>No standard project entries for this week.</em></p>"
             
-            body += "</table>"
+            # Process AIBFS data
+            if not aibfs_data.empty and 'user_email' in aibfs_data.columns:
+                body += """
+                <h3>🎓 AIB Future Sparks Summary</h3>
+                <table>
+                    <tr>
+                        <th>User</th>
+                        <th>Total Hours</th>
+                        <th>Entries</th>
+                        <th>Suites</th>
+                        <th>Status</th>
+                    </tr>
+                """
+                
+                for user_email in sorted(all_users):
+                    user_data = aibfs_data[aibfs_data['user_email'] == user_email]
+                    
+                    if not user_data.empty:
+                        total_hours = self._calculate_hours_from_duration(user_data['duration'])
+                        entries_count = len(user_data)
+                        suites_count = user_data['suite'].nunique() if 'suite' in user_data.columns else 0
+                        status = f'<span class="completed">✅ {total_hours}h logged</span>'
+                        
+                        body += f"""
+                        <tr>
+                            <td>{user_email}</td>
+                            <td>{total_hours:.1f}h</td>
+                            <td>{entries_count}</td>
+                            <td>{suites_count}</td>
+                            <td>{status}</td>
+                        </tr>
+                        """
+                
+                body += "</table>"
+            
+            # Process BCR data
+            if not bcr_data.empty and 'user_email' in bcr_data.columns:
+                body += """
+                <h3>🏥 BCR (Breakthrough Cancer Research) Summary</h3>
+                <table>
+                    <tr>
+                        <th>User</th>
+                        <th>Total Hours</th>
+                        <th>Entries</th>
+                        <th>Sections</th>
+                        <th>Status</th>
+                    </tr>
+                """
+                
+                for user_email in sorted(all_users):
+                    user_data = bcr_data[bcr_data['user_email'] == user_email]
+                    
+                    if not user_data.empty:
+                        total_hours = self._calculate_hours_from_duration(user_data['duration'])
+                        entries_count = len(user_data)
+                        sections_count = user_data['section'].nunique() if 'section' in user_data.columns else 0
+                        status = f'<span class="completed">✅ {total_hours}h logged</span>'
+                        
+                        body += f"""
+                        <tr>
+                            <td>{user_email}</td>
+                            <td>{total_hours:.1f}h</td>
+                            <td>{entries_count}</td>
+                            <td>{sections_count}</td>
+                            <td>{status}</td>
+                        </tr>
+                        """
+                
+                body += "</table>"
+            
+            # Missing users alert
+            missing_users = set(expected_users) - all_users
+            if missing_users:
+                body += """
+                <h3 style="color: #dc3545;">⚠️ Missing Submissions</h3>
+                <p>The following users have not submitted their time tracking for this week:</p>
+                <ul>
+                """
+                for user in sorted(missing_users):
+                    body += f"<li>{user}</li>"
+                body += "</ul>"
+            
+            # Footer
+            body += """
+                <div class="footer">
+                    <p>📧 This is an automated weekly report from the RN Time Tracker system.</p>
+                    <p>💡 To view detailed breakdowns, log in to the Time Tracker dashboard.</p>
+                </div>
+            </body>
+            </html>
+            """
             
             # Send email
             msg = MIMEMultipart()
             msg['From'] = self.smtp_settings['email']
-            msg['To'] = 'kay@realnation.ie'
+            # Send to both Kay and Stephen (for testing and visibility)
+            msg['To'] = 'kay.mckeon@realnation.ie, stephen.maguire@realnation.ie'
             msg['Subject'] = subject
             
             msg.attach(MIMEText(body, 'html'))
             
+            # Send via SMTP
+            print(f"📧 Connecting to SMTP server...")
             server = smtplib.SMTP(self.smtp_settings['smtp_server'], self.smtp_settings['smtp_port'])
             server.starttls()
             server.login(self.smtp_settings['email'], self.smtp_settings['app_password'])
             server.send_message(msg)
             server.quit()
             
+            print(f"✅ Weekly email report sent successfully to kay.mckeon@realnation.ie and stephen.maguire@realnation.ie")
             return True
             
         except Exception as e:
             error_msg = f"Failed to send email: {str(e)}"
             print(f"❌ Email error: {error_msg}")
-            st.error(error_msg)
+            if hasattr(st, 'error'):
+                st.error(error_msg)
+            import traceback
+            print(traceback.format_exc())
             return False
     
     def export_to_excel(self, data: pd.DataFrame, filename: str = None) -> bytes:
@@ -1620,6 +2471,19 @@ def show_time_tracker(app):
                 date_obj = datetime.strptime(date_str, '%Y-%m-%d')
                 day_name = date_obj.strftime('%A')
                 
+                # Separate AIBFS, BCR, and standard events
+                standard_events = []
+                aibfs_events = []
+                bcr_events = []
+                
+                for event in day_events:
+                    if '_AIBFS_' in event['summary']:
+                        aibfs_events.append(event)
+                    elif re.match(r'^BCR', event['summary'], re.IGNORECASE):
+                        bcr_events.append(event)
+                    else:
+                        standard_events.append(event)
+                
                 # Day header with visual separation
                 st.markdown(f"""
                 <div style="background: linear-gradient(135deg, #1f4e79 0%, #2c5f8f 100%); 
@@ -1629,32 +2493,34 @@ def show_time_tracker(app):
                             margin: 1.5rem 0 1rem 0;
                             font-weight: 600;
                             box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-                    📅 {day_name}, {date_obj.strftime('%B %d, %Y')} — {len(day_events)} events
+                    📅 {day_name}, {date_obj.strftime('%B %d, %Y')} — {len(day_events)} events ({len(standard_events)} standard, {len(aibfs_events)} AIBFS, {len(bcr_events)} BCR)
                 </div>
                 """, unsafe_allow_html=True)
                 
-                # Create editable table for this day
-                event_data = []
-                for idx, event in enumerate(day_events):
-                    parsed = app.parse_event_title(event['summary'])
-                    event_key = f"{date_str}_{idx}"
-                    
-                    event_data.append({
-                        '_key': event_key,
-                        'Include': True,  # Checkbox column
-                        'Type': '🤝 Meeting' if event.get('is_meeting') else '⏰ Work',
-                        'Start': event['start'].strftime('%H:%M') if event['start'] else '',
-                        'End': event['end'].strftime('%H:%M') if event['end'] else '',
-                        'Duration': str(event['end'] - event['start']).split(',')[0] if event['start'] and event['end'] else '',
-                        'Project Code': parsed['project_code'],
-                        'Job Number': parsed['job_number'],
-                        'Client': parsed['client'],
-                        'Project': parsed['project'],
-                        'Job': parsed['job'],
-                        'Version': parsed['version'],
-                        'Auto-Parsed': '✅' if parsed.get('parsed', False) else '⚠️ Manual',
-                        'Original Title': event['summary']
-                    })
+                # Process STANDARD events
+                if standard_events:
+                    st.markdown("#### 📋 Standard Projects")
+                    event_data = []
+                    for idx, event in enumerate(standard_events):
+                        parsed = app.parse_event_title(event['summary'])
+                        event_key = f"{date_str}_std_{idx}"
+                        
+                        event_data.append({
+                            '_key': event_key,
+                            'Include': True,
+                            'Type': '🤝 Meeting' if event.get('is_meeting') else '⏰ Work',
+                            'Start': event['start'].strftime('%H:%M') if event['start'] else '',
+                            'End': event['end'].strftime('%H:%M') if event['end'] else '',
+                            'Duration': str(event['end'] - event['start']).split(',')[0] if event['start'] and event['end'] else '',
+                            'Project Code': parsed.get('project_code', ''),
+                            'Job Number': parsed.get('job_number', ''),
+                            'Client': parsed.get('client', ''),
+                            'Project': parsed.get('project', ''),
+                            'Job': parsed.get('job', ''),
+                            'Version': parsed.get('version', ''),
+                            'Auto-Parsed': '✅' if parsed.get('parsed', False) else '⚠️ Manual',
+                            'Original Title': event['summary']
+                        })
                 
                 df_day = pd.DataFrame(event_data)
                 
@@ -1689,12 +2555,12 @@ def show_time_tracker(app):
                         st.warning(f"⚠️ {unparsed_count} event(s) need manual assignment. No projects found in Google Sheets 'Projects' tab.")
                         st.info("💡 Add projects to the 'Projects' tab in your Google Sheet, or manually edit the table below.")
                 
-                # Editable table for this day with checkbox to exclude
+                    # Editable table for standard entries
                 edited_df_day = st.data_editor(
                     df_day.drop(columns=['_key', 'Auto-Parsed']),
                 use_container_width=True,
                     num_rows="fixed",
-                    key=f"event_editor_{date_str}",
+                        key=f"event_editor_std_{date_str}",
                     hide_index=True,
                     column_config={
                         "Include": st.column_config.CheckboxColumn(
@@ -1716,9 +2582,8 @@ def show_time_tracker(app):
                 if excluded_count > 0:
                     st.warning(f"🚫 {excluded_count} event(s) will be excluded from this day")
                 
-                # Collect entries for this day (only included ones)
+                    # Collect standard entries
                 for _, row in edited_df_day.iterrows():
-                    # Skip if user unchecked the Include box
                     if not row.get('Include', True):
                         continue
                     
@@ -1734,26 +2599,300 @@ def show_time_tracker(app):
                         'job': row['Job'],
                         'version': row['Version'],
                         'user_email': app.user_email,
-                        'event_type': row['Type']
+                        'event_type': row['Type'],
+                        'is_aibfs': False
+                    }
+                    all_entries.append(entry)
+                
+                # Process AIB FUTURE SPARKS events
+                if aibfs_events:
+                    st.markdown("#### 🎓 AIB Future Sparks")
+                    aibfs_data = []
+                    for idx, event in enumerate(aibfs_events):
+                        parsed = app.parse_event_title(event['summary'])
+                        event_key = f"{date_str}_aibfs_{idx}"
+                        
+                        aibfs_data.append({
+                            '_key': event_key,
+                            'Include': True,
+                            'Type': '🤝 Meeting' if event.get('is_meeting') else '⏰ Work',
+                            'Start': event['start'].strftime('%H:%M') if event['start'] else '',
+                            'End': event['end'].strftime('%H:%M') if event['end'] else '',
+                            'Duration': str(event['end'] - event['start']).split(',')[0] if event['start'] and event['end'] else '',
+                            'Job Number': parsed.get('job_number', ''),
+                            'Project': parsed.get('project', 'AIBFS'),
+                            'Suite': parsed.get('suite', ''),
+                            'Group': parsed.get('group', ''),
+                            'Document Type': parsed.get('document_type', ''),
+                            'Document': parsed.get('document', ''),
+                            'Version': parsed.get('version', ''),
+                            'Auto-Parsed': '✅' if parsed.get('parsed', False) else '⚠️ Manual',
+                            'Original Title': event['summary']
+                        })
+                    
+                    df_aibfs = pd.DataFrame(aibfs_data)
+                    
+                    # Show warning for unparsed AIBFS entries
+                    unparsed_aibfs = len([e for e in aibfs_data if e['Auto-Parsed'] == '⚠️ Manual'])
+                    if unparsed_aibfs > 0:
+                        st.warning(f"⚠️ {unparsed_aibfs} AIBFS event(s) couldn't be fully parsed. Please review and edit manually.")
+                    
+                    # Editable table for AIBFS entries
+                    edited_df_aibfs = st.data_editor(
+                        df_aibfs.drop(columns=['_key', 'Auto-Parsed']),
+                        use_container_width=True,
+                        num_rows="fixed",
+                        key=f"event_editor_aibfs_{date_str}",
+                        hide_index=True,
+                        column_config={
+                            "Include": st.column_config.CheckboxColumn(
+                                "Include?",
+                                help="Uncheck to exclude this event",
+                                default=True,
+                                width="small"
+                            ),
+                            "Type": st.column_config.TextColumn("Type", width="small"),
+                            "Start": st.column_config.TextColumn("Start", width="small"),
+                            "End": st.column_config.TextColumn("End", width="small"),
+                            "Duration": st.column_config.TextColumn("Duration", width="small"),
+                            "Original Title": st.column_config.TextColumn("Original Title", width="large")
+                        }
+                    )
+                    
+                    # Show exclusion info for AIBFS
+                    excluded_aibfs = len(edited_df_aibfs[edited_df_aibfs['Include'] == False])
+                    if excluded_aibfs > 0:
+                        st.warning(f"🚫 {excluded_aibfs} AIBFS event(s) will be excluded")
+                    
+                    # Collect AIBFS entries
+                    for _, row in edited_df_aibfs.iterrows():
+                        if not row.get('Include', True):
+                            continue
+                        
+                        entry = {
+                            'date': date_str,
+                            'start_time': row['Start'],
+                            'end_time': row['End'],
+                            'duration': row['Duration'],
+                            'job_number': row['Job Number'],
+                            'project': row['Project'],
+                            'suite': row['Suite'],
+                            'group': row['Group'],
+                            'document_type': row['Document Type'],
+                            'document': row['Document'],
+                            'version': row['Version'],
+                            'user_email': app.user_email,
+                            'event_type': row['Type'],
+                            'is_aibfs': True
+                    }
+                    all_entries.append(entry)
+                
+                # Process BCR events
+                if bcr_events:
+                    st.markdown("#### 🏥 BCR (Breakthrough Cancer Research)")
+                    bcr_data = []
+                    for idx, event in enumerate(bcr_events):
+                        parsed = app.parse_event_title(event['summary'])
+                        event_key = f"{date_str}_bcr_{idx}"
+                        
+                        bcr_data.append({
+                            '_key': event_key,
+                            'Include': True,
+                            'Type': '🤝 Meeting' if event.get('is_meeting') else '⏰ Work',
+                            'Start': event['start'].strftime('%H:%M') if event['start'] else '',
+                            'End': event['end'].strftime('%H:%M') if event['end'] else '',
+                            'Duration': str(event['end'] - event['start']).split(',')[0] if event['start'] and event['end'] else '',
+                            'Job': parsed.get('job', ''),
+                            'Section': parsed.get('section', ''),
+                            'Job Details': parsed.get('job_details', ''),
+                            'Version': parsed.get('version', ''),
+                            'Needs Review': '⚠️' if parsed.get('needs_review', False) else '✅',
+                            'Auto-Parsed': '✅' if parsed.get('parsed', False) else '⚠️ Manual',
+                            'Original Title': event['summary']
+                        })
+                    
+                    df_bcr = pd.DataFrame(bcr_data)
+                    
+                    # Show warning for unparsed BCR entries
+                    unparsed_bcr = len([e for e in bcr_data if e['Auto-Parsed'] == '⚠️ Manual'])
+                    needs_review = len([e for e in bcr_data if e['Needs Review'] == '⚠️'])
+                    if unparsed_bcr > 0 or needs_review > 0:
+                        st.warning(f"⚠️ {unparsed_bcr} BCR event(s) couldn't be fully parsed, {needs_review} need review. Please check and edit manually.")
+                    
+                    # Editable table for BCR entries
+                    edited_df_bcr = st.data_editor(
+                        df_bcr.drop(columns=['_key', 'Auto-Parsed']),
+                        use_container_width=True,
+                        num_rows="fixed",
+                        key=f"event_editor_bcr_{date_str}",
+                        hide_index=True,
+                        column_config={
+                            "Include": st.column_config.CheckboxColumn(
+                                "Include?",
+                                help="Uncheck to exclude this event",
+                                default=True,
+                                width="small"
+                            ),
+                            "Type": st.column_config.TextColumn("Type", width="small"),
+                            "Start": st.column_config.TextColumn("Start", width="small"),
+                            "End": st.column_config.TextColumn("End", width="small"),
+                            "Duration": st.column_config.TextColumn("Duration", width="small"),
+                            "Needs Review": st.column_config.TextColumn("Review", width="small"),
+                            "Original Title": st.column_config.TextColumn("Original Title", width="large")
+                        }
+                    )
+                    
+                    # Show exclusion info for BCR
+                    excluded_bcr = len(edited_df_bcr[edited_df_bcr['Include'] == False])
+                    if excluded_bcr > 0:
+                        st.warning(f"🚫 {excluded_bcr} BCR event(s) will be excluded")
+                    
+                    # Collect BCR entries
+                    for _, row in edited_df_bcr.iterrows():
+                        if not row.get('Include', True):
+                            continue
+                        
+                        entry = {
+                            'date': date_str,
+                            'start_time': row['Start'],
+                            'end_time': row['End'],
+                            'duration': row['Duration'],
+                            'job': row['Job'],
+                            'section': row['Section'],
+                            'job_details': row['Job Details'],
+                            'version': row['Version'],
+                            'needs_review': row['Needs Review'] == '⚠️',
+                            'user_email': app.user_email,
+                            'event_type': row['Type'],
+                            'is_bcr': True
                     }
                     all_entries.append(entry)
             
             # Sign-off section
             st.markdown("---")
             st.markdown("### ✅ Weekly Sign-off")
-            col1, col2 = st.columns([3, 1])
             
-            with col1:
-                st.info("📋 Review all entries above and make any necessary edits before signing off your week.")
+            # Initialize session state for conflict handling
+            if 'conflict_check_done' not in st.session_state:
+                st.session_state.conflict_check_done = False
+            if 'conflict_data' not in st.session_state:
+                st.session_state.conflict_data = None
+            if 'entries_to_save' not in st.session_state:
+                st.session_state.entries_to_save = None
             
-            with col2:
-                if st.button("✅ Mark Week Complete", type="primary", use_container_width=True):
-                    # Save to Google Sheets
-                    if app.save_time_entries(all_entries):
-                        st.balloons()
-                        st.success("🎉 Week marked complete! Your entries have been saved.")
-                    else:
-                        st.error("❌ Failed to save entries. Please try again.")
+            # Check for conflicts button
+            if not st.session_state.conflict_check_done:
+                col1, col2 = st.columns([3, 1])
+                
+                with col1:
+                    st.info("📋 Review all entries above and make any necessary edits before signing off your week.")
+                
+                with col2:
+                    if st.button("✅ Mark Week Complete", type="primary", use_container_width=True, key="initial_save_btn"):
+                        # Check for conflicts
+                        st.session_state.entries_to_save = all_entries
+                        conflict_result = app.check_for_conflicts(all_entries)
+                        st.session_state.conflict_data = conflict_result
+                        st.session_state.conflict_check_done = True
+                        
+                        if not conflict_result['conflicts']:
+                            # No conflicts, save directly
+                            if app.save_time_entries(all_entries, overwrite_conflicts=False):
+                                st.balloons()
+                                st.success("🎉 Week marked complete! Your entries have been saved.")
+                                # Reset states
+                                st.session_state.conflict_check_done = False
+                                st.session_state.conflict_data = None
+                                st.session_state.entries_to_save = None
+                            else:
+                                st.error("❌ Failed to save entries. Please try again.")
+                                st.session_state.conflict_check_done = False
+                        else:
+                            st.rerun()
+            
+            # Show conflicts and overwrite UI
+            elif st.session_state.conflict_check_done and st.session_state.conflict_data:
+                conflict_result = st.session_state.conflict_data
+                
+                if conflict_result['conflicts']:
+                    st.warning(f"⚠️ **Changes Identified in Previously Uploaded Calendar**")
+                    st.info(f"Found {len(conflict_result['conflicts'])} time period(s) with changes. Review below:")
+                    
+                    with st.expander("📋 View Changes in Detail", expanded=True):
+                        for idx, conflict in enumerate(conflict_result['conflicts']):
+                            new = conflict['new_entry']
+                            st.markdown(f"**Conflict #{idx + 1}: {new.get('date')} {new.get('start_time')}-{new.get('end_time')}**")
+                            
+                            # Show each overlapping entry
+                            for overlap in conflict['overlapping']:
+                                old = overlap['record']
+                                
+                                if conflict['type'] == 'standard':
+                                    col1, col2 = st.columns(2)
+                                    with col1:
+                                        st.markdown("**❌ Old Entry:**")
+                                        st.text(f"Time: {old.get('Start Time')}-{old.get('End Time')}")
+                                        st.text(f"Project: {old.get('Project Code')} - {old.get('Project')}")
+                                        st.text(f"Job: {old.get('Job')}")
+                                        st.text(f"Client: {old.get('Client')}")
+                                        st.text(f"Version: {old.get('Version')}")
+                                    with col2:
+                                        st.markdown("**✅ New Entry:**")
+                                        st.text(f"Time: {new.get('start_time')}-{new.get('end_time')}")
+                                        st.text(f"Project: {new.get('project_code')} - {new.get('project')}")
+                                        st.text(f"Job: {new.get('job')}")
+                                        st.text(f"Client: {new.get('client')}")
+                                        st.text(f"Version: {new.get('version')}")
+                                else:  # AIBFS
+                                    col1, col2 = st.columns(2)
+                                    with col1:
+                                        st.markdown("**❌ Old AIBFS Entry:**")
+                                        st.text(f"Time: {old.get('Start Time')}-{old.get('End Time')}")
+                                        st.text(f"Job: {old.get('Job Number')}")
+                                        st.text(f"Suite: {old.get('Suite')}")
+                                        st.text(f"Group: {old.get('Group')}")
+                                        st.text(f"Doc: {old.get('Document')}")
+                                    with col2:
+                                        st.markdown("**✅ New AIBFS Entry:**")
+                                        st.text(f"Time: {new.get('start_time')}-{new.get('end_time')}")
+                                        st.text(f"Job: {new.get('job_number')}")
+                                        st.text(f"Suite: {new.get('suite')}")
+                                        st.text(f"Group: {new.get('group')}")
+                                        st.text(f"Doc: {new.get('document')}")
+                            
+                            st.markdown("---")
+                    
+                    # Overwrite decision buttons
+                    st.markdown("### 🔄 Overwrite Decision")
+                    col1, col2, col3 = st.columns([1, 1, 2])
+                    
+                    with col1:
+                        if st.button("✅ Yes, Overwrite", type="primary", use_container_width=True, key="overwrite_yes"):
+                            # Save with overwrite
+                            if app.save_time_entries(st.session_state.entries_to_save, overwrite_conflicts=True):
+                                st.balloons()
+                                st.success("🎉 Week marked complete! Old entries have been updated with new calendar data.")
+                                # Reset states
+                                st.session_state.conflict_check_done = False
+                                st.session_state.conflict_data = None
+                                st.session_state.entries_to_save = None
+                                st.rerun()
+                            else:
+                                st.error("❌ Failed to save entries. Please try again.")
+                    
+                    with col2:
+                        if st.button("❌ No, Cancel", use_container_width=True, key="overwrite_no"):
+                            st.info("ℹ️ Upload cancelled. No changes were made to existing entries.")
+                            # Reset states
+                            st.session_state.conflict_check_done = False
+                            st.session_state.conflict_data = None
+                            st.session_state.entries_to_save = None
+                            st.rerun()
+                    
+                    with col3:
+                        st.caption(f"💡 {len(conflict_result.get('clean_entries', []))} entries have no conflicts and will be saved")
+                        if conflict_result.get('duplicates'):
+                            st.caption(f"⏭️ {len(conflict_result['duplicates'])} identical duplicates will be skipped")
         
         else:  # Calendar View
             st.markdown("### 📅 Calendar View")
@@ -1788,14 +2927,22 @@ def show_dashboard(app):
     with col2:
         end_date = st.date_input("End Date", value=datetime.now())
     
-    # Get data from Google Sheets
-    data = app.get_time_entries(
+    # Get data from Google Sheets (standard, AIBFS, and BCR)
+    standard_data, aibfs_data, bcr_data = app.get_time_entries(
         datetime.combine(start_date, datetime.min.time()),
         datetime.combine(end_date, datetime.max.time())
     )
     
-    # Normalize column names to handle both capitalized and lowercase versions
-    data.columns = [col.lower().replace(' ', '_') for col in data.columns]
+    # Normalize column names
+    if not standard_data.empty:
+        standard_data.columns = [col.lower().replace(' ', '_') for col in standard_data.columns]
+    if not aibfs_data.empty:
+        aibfs_data.columns = [col.lower().replace(' ', '_') for col in aibfs_data.columns]
+    if not bcr_data.empty:
+        bcr_data.columns = [col.lower().replace(' ', '_') for col in bcr_data.columns]
+    
+    # For backward compatibility, use standard_data as 'data'
+    data = standard_data
     
     # Admin filters
     if app.user_role == "admin":
@@ -2107,16 +3254,255 @@ def show_dashboard(app):
     else:
         st.info("No job duration data available")
     
-    # Data table
-    st.markdown("### 📋 Detailed View")
+    # Data table - Standard Entries
+    st.markdown("### 📋 Detailed View - Standard Projects")
+    # Add Hours column if duration exists
+    if not data.empty and 'duration' in data.columns:
+        data['hours'] = data['duration'].apply(lambda x: app._duration_to_hours(x))
+    
     # Only include columns that exist
-    available_cols = ['date', 'user_email', 'project_code', 'client', 'project', 'job', 'duration']
+    available_cols = ['date', 'user_email', 'project_code', 'client', 'project', 'job', 'duration', 'hours']
     display_cols = [col for col in available_cols if col in data.columns]
     if display_cols:
         display_data = data[display_cols].copy()
         st.dataframe(display_data, use_container_width=True)
     else:
-        st.warning("No data columns available to display")
+        st.warning("No standard project data available to display")
+    
+    # AIB Future Sparks Section
+    if not aibfs_data.empty:
+        st.markdown("---")
+        st.markdown("## 🎓 AIB Future Sparks Dashboard")
+        
+        # AIBFS Metrics
+        aibfs_entries = len(aibfs_data)
+        aibfs_days = aibfs_data['date'].nunique() if 'date' in aibfs_data.columns else 0
+        
+        # Calculate AIBFS hours
+        aibfs_hours = 0
+        if 'duration' in aibfs_data.columns:
+            for duration in aibfs_data['duration']:
+                try:
+                    if pd.notna(duration) and ':' in str(duration):
+                        duration_str = str(duration)
+                        if 'days' in duration_str or 'day' in duration_str:
+                            duration_str = duration_str.split(',')[-1].strip()
+                        parts = duration_str.split(':')
+                        hours = int(parts[0]) if len(parts) > 0 else 0
+                        minutes = int(parts[1]) if len(parts) > 1 else 0
+                        aibfs_hours += hours + (minutes / 60)
+                except:
+                    pass
+        
+        # Summary cards for AIBFS
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("AIBFS Entries", aibfs_entries)
+        with col2:
+            st.metric("AIBFS Days", aibfs_days)
+        with col3:
+            st.metric("AIBFS Hours", f"{aibfs_hours:.1f}h" if aibfs_hours > 0 else "0h")
+        
+        # Charts for AIBFS
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown("### 📚 Duration by Suite")
+            if 'suite' in aibfs_data.columns and 'duration' in aibfs_data.columns:
+                suite_duration = []
+                for suite_name in aibfs_data['suite'].unique():
+                    if pd.notna(suite_name) and suite_name:
+                        suite_data = aibfs_data[aibfs_data['suite'] == suite_name]
+                        total_duration = 0
+                        for duration in suite_data['duration']:
+                            try:
+                                if pd.notna(duration) and ':' in str(duration):
+                                    duration_str = str(duration)
+                                    if 'days' in duration_str or 'day' in duration_str:
+                                        duration_str = duration_str.split(',')[-1].strip()
+                                    parts = duration_str.split(':')
+                                    hours = int(parts[0]) if len(parts) > 0 else 0
+                                    minutes = int(parts[1]) if len(parts) > 1 else 0
+                                    total_duration += hours + (minutes / 60)
+                            except:
+                                pass
+                        if total_duration > 0:
+                            suite_duration.append({'Suite': suite_name, 'Hours': round(total_duration, 2)})
+                
+                if suite_duration:
+                    df_suite = pd.DataFrame(suite_duration)
+                    fig = px.bar(
+                        df_suite,
+                        x='Suite',
+                        y='Hours',
+                        title="AIBFS Duration by Suite (Hours)",
+                        color_discrete_sequence=[brand_colors[4]],
+                        template='plotly_white'
+                    )
+                    fig.update_traces(marker_color=brand_colors[4])
+                    fig.update_layout(
+                        font=dict(color='#212529', size=12),
+                        title_font=dict(color='#1f4e79', size=16),
+                        showlegend=False,
+                        paper_bgcolor='rgba(0,0,0,0)',
+                        plot_bgcolor='rgba(0,0,0,0)'
+                    )
+                    st.plotly_chart(fig, use_container_width=True, theme=None, config={'displayModeBar': False})
+                else:
+                    st.info("No suite data available")
+            else:
+                st.info("No suite data available")
+        
+        with col2:
+            st.markdown("### 👥 Duration by Group")
+            if 'group' in aibfs_data.columns and 'duration' in aibfs_data.columns:
+                group_duration = []
+                for group_name in aibfs_data['group'].unique():
+                    if pd.notna(group_name) and group_name:
+                        group_data = aibfs_data[aibfs_data['group'] == group_name]
+                        total_duration = 0
+                        for duration in group_data['duration']:
+                            try:
+                                if pd.notna(duration) and ':' in str(duration):
+                                    duration_str = str(duration)
+                                    if 'days' in duration_str or 'day' in duration_str:
+                                        duration_str = duration_str.split(',')[-1].strip()
+                                    parts = duration_str.split(':')
+                                    hours = int(parts[0]) if len(parts) > 0 else 0
+                                    minutes = int(parts[1]) if len(parts) > 1 else 0
+                                    total_duration += hours + (minutes / 60)
+                            except:
+                                pass
+                        if total_duration > 0:
+                            group_duration.append({'Group': group_name, 'Hours': round(total_duration, 2)})
+                
+                if group_duration:
+                    df_group = pd.DataFrame(group_duration)
+                    fig = px.pie(
+                        df_group,
+                        values='Hours',
+                        names='Group',
+                        title="AIBFS Duration by Group (Hours)",
+                        color_discrete_sequence=brand_colors,
+                        template='plotly_white'
+                    )
+                    fig.update_traces(textfont_size=12, marker=dict(colors=brand_colors, line=dict(color='white', width=2)))
+                    fig.update_layout(
+                        font=dict(color='#212529', size=12),
+                        title_font=dict(color='#1f4e79', size=16),
+                        paper_bgcolor='rgba(0,0,0,0)'
+                    )
+                    st.plotly_chart(fig, use_container_width=True, theme=None, config={'displayModeBar': False})
+                else:
+                    st.info("No group data available")
+            else:
+                st.info("No group data available")
+        
+        # AIBFS Data Table
+        st.markdown("### 📋 Detailed View - AIB Future Sparks")
+        # Add Hours column if duration exists
+        if 'duration' in aibfs_data.columns:
+            aibfs_data['hours'] = aibfs_data['duration'].apply(lambda x: app._duration_to_hours(x))
+        
+        aibfs_display_cols = ['date', 'user_email', 'job_number', 'suite', 'group', 'document_type', 'document', 'version', 'duration', 'hours']
+        aibfs_cols = [col for col in aibfs_display_cols if col in aibfs_data.columns]
+        if aibfs_cols:
+            aibfs_display_data = aibfs_data[aibfs_cols].copy()
+            st.dataframe(aibfs_display_data, use_container_width=True)
+        else:
+            st.info("No AIBFS columns available to display")
+    else:
+        st.info("ℹ️ No AIB Future Sparks entries found for this period")
+    
+    # BCR Section
+    if not bcr_data.empty:
+        st.markdown("---")
+        st.markdown("## 🏥 BCR (Breakthrough Cancer Research) Dashboard")
+        
+        # BCR Metrics
+        bcr_entries = len(bcr_data)
+        
+        # Calculate BCR hours
+        try:
+            bcr_hours = app._calculate_hours_from_duration(bcr_data['duration'])
+        except:
+            bcr_hours = 0
+        
+        # BCR metrics
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric("Total BCR Hours", f"{bcr_hours:.1f}h")
+        with col2:
+            st.metric("BCR Entries", bcr_entries)
+        with col3:
+            sections_count = bcr_data['section'].nunique() if 'section' in bcr_data.columns else 0
+            st.metric("Sections", sections_count)
+        with col4:
+            needs_review = len(bcr_data[bcr_data['needs_review'] == 'Yes']) if 'needs_review' in bcr_data.columns else 0
+            st.metric("Needs Review", needs_review, delta=f"-{needs_review}" if needs_review > 0 else None)
+        
+        st.markdown("---")
+        
+        # BCR Charts
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            # Duration by Section
+            if 'section' in bcr_data.columns and not bcr_data[bcr_data['section'] != ''].empty:
+                st.markdown("#### ⏱️ Duration by Section")
+                section_data = bcr_data.groupby('section').apply(
+                    lambda x: app._calculate_hours_from_duration(x['duration'])
+                ).reset_index(name='hours')
+                
+                if not section_data.empty:
+                    fig = px.pie(
+                        section_data,
+                        values='hours',
+                        names='section',
+                        title='Hours by Section'
+                    )
+                    fig.update_traces(textposition='inside', textinfo='percent+label')
+                    st.plotly_chart(fig, use_container_width=True)
+                else:
+                    st.info("No section data available")
+            else:
+                st.info("No section data available")
+        
+        with col2:
+            # Duration by Job
+            if 'job' in bcr_data.columns and not bcr_data[bcr_data['job'] != ''].empty:
+                st.markdown("#### 📋 Duration by Job")
+                job_data = bcr_data.groupby('job').apply(
+                    lambda x: app._calculate_hours_from_duration(x['duration'])
+                ).reset_index(name='hours')
+                
+                if not job_data.empty:
+                    fig = px.bar(
+                        job_data.sort_values('hours', ascending=False).head(10),
+                        x='job',
+                        y='hours',
+                        title='Top 10 Jobs by Hours'
+                    )
+                    st.plotly_chart(fig, use_container_width=True)
+                else:
+                    st.info("No job data available")
+            else:
+                st.info("No job data available")
+        
+        # BCR Data Table
+        st.markdown("### 📋 Detailed View - BCR")
+        # Add Hours column if duration exists
+        if 'duration' in bcr_data.columns:
+            bcr_data['hours'] = bcr_data['duration'].apply(lambda x: app._duration_to_hours(x))
+        
+        bcr_display_cols = ['date', 'user_email', 'job', 'section', 'job_details', 'version', 'needs_review', 'duration', 'hours']
+        bcr_cols = [col for col in bcr_display_cols if col in bcr_data.columns]
+        if bcr_cols:
+            st.dataframe(bcr_data[bcr_cols].sort_values('date', ascending=False), use_container_width=True)
+        else:
+            st.info("No BCR columns available to display")
+    else:
+        st.info("ℹ️ No BCR entries found for this period")
     
     # Export options
     st.markdown("### 📤 Export Options")
