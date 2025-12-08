@@ -1029,6 +1029,8 @@ class TimeTrackerApp:
                         self.time_entries_tab = st.secrets.get("TIME_ENTRIES_TAB_NAME", "Time Entries")
                         
                         # Check for SMTP settings (flat structure)
+                        print(f"🔍 Debug: Checking for SMTP settings in secrets...")
+                        print(f"🔍 Available secret keys: {list(st.secrets.keys())}")
                         if 'GMAIL_SMTP_SETTINGS' in st.secrets:
                             smtp_config = dict(st.secrets['GMAIL_SMTP_SETTINGS'])
                             # Normalize keys to lowercase for compatibility
@@ -1051,6 +1053,7 @@ class TimeTrackerApp:
                         print(f"🔍 Project ID: {self.credentials.get('project_id', 'NOT SET')}")
                         print(f"🔍 Client Email: {self.credentials.get('client_email', 'NOT SET')}")
                         print(f"🔍 Spreadsheet ID: {self.spreadsheet_id}")
+                        print(f"🔍 SMTP Settings: {'Configured' if self.smtp_settings else 'NOT CONFIGURED'}")
                         return
                     
                     # Try nested structure (keys under GOOGLE_SHEETS_CREDENTIALS section)
@@ -2228,9 +2231,10 @@ def main():
     app = st.session_state.app_instance
     
     # Force reload credentials if they're missing (e.g., after app restart)
-    if not app.credentials:
-        print("⚠️  Credentials missing from cached app instance, reloading...")
+    if not app.credentials or not hasattr(app, 'smtp_settings') or app.smtp_settings is None:
+        print("⚠️  Credentials or SMTP settings missing from cached app instance, reloading...")
         app.load_credentials()
+        print(f"🔍 After reload - Credentials: {'✅' if app.credentials else '❌'}, SMTP: {'✅' if app.smtp_settings else '❌'}")
     
     # Show debug info if credentials failed to load
     if not app.credentials and st.session_state.get('show_debug', False):
