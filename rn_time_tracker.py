@@ -1027,7 +1027,25 @@ class TimeTrackerApp:
                         self.spreadsheet_id = st.secrets.get("SPREADSHEET_ID", "")
                         self.users_tab = st.secrets.get("USERS_TAB_NAME", "Users")
                         self.time_entries_tab = st.secrets.get("TIME_ENTRIES_TAB_NAME", "Time Entries")
-                        self.smtp_settings = None
+                        
+                        # Check for SMTP settings (flat structure)
+                        if 'GMAIL_SMTP_SETTINGS' in st.secrets:
+                            smtp_config = dict(st.secrets['GMAIL_SMTP_SETTINGS'])
+                            # Normalize keys to lowercase for compatibility
+                            app_password = smtp_config.get('EMAIL_PASSWORD', smtp_config.get('app_password', ''))
+                            # Remove spaces from app password (Gmail format is "xxxx xxxx xxxx xxxx" but needs "xxxxxxxxxxxxxxxx")
+                            app_password = app_password.replace(' ', '').strip()
+                            
+                            self.smtp_settings = {
+                                'email': smtp_config.get('EMAIL_ADDRESS', smtp_config.get('email', '')),
+                                'app_password': app_password,
+                                'smtp_server': smtp_config.get('SMTP_SERVER', smtp_config.get('smtp_server', 'smtp.gmail.com')),
+                                'smtp_port': smtp_config.get('SMTP_PORT', smtp_config.get('smtp_port', 587))
+                            }
+                            print(f"✅ SMTP settings loaded from flat structure")
+                        else:
+                            self.smtp_settings = None
+                            print(f"⚠️ SMTP settings not found in secrets")
                         
                         print(f"✅ Credentials loaded from Streamlit secrets (flat)")
                         print(f"🔍 Project ID: {self.credentials.get('project_id', 'NOT SET')}")
