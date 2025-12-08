@@ -1028,14 +1028,15 @@ class TimeTrackerApp:
                         self.users_tab = st.secrets.get("USERS_TAB_NAME", "Users")
                         self.time_entries_tab = st.secrets.get("TIME_ENTRIES_TAB_NAME", "Time Entries")
                         
-                        # Check for SMTP settings (flat structure)
+                        # Check for SMTP settings (flat structure - keys at root level)
                         print(f"🔍 Debug: Checking for SMTP settings in secrets...")
                         print(f"🔍 Available secret keys: {list(st.secrets.keys())}")
+                        
+                        # Check for nested GMAIL_SMTP_SETTINGS section OR flat EMAIL_ADDRESS keys
                         if 'GMAIL_SMTP_SETTINGS' in st.secrets:
+                            # Nested structure
                             smtp_config = dict(st.secrets['GMAIL_SMTP_SETTINGS'])
-                            # Normalize keys to lowercase for compatibility
                             app_password = smtp_config.get('EMAIL_PASSWORD', smtp_config.get('app_password', ''))
-                            # Remove spaces from app password (Gmail format is "xxxx xxxx xxxx xxxx" but needs "xxxxxxxxxxxxxxxx")
                             app_password = app_password.replace(' ', '').strip()
                             
                             self.smtp_settings = {
@@ -1044,10 +1045,22 @@ class TimeTrackerApp:
                                 'smtp_server': smtp_config.get('SMTP_SERVER', smtp_config.get('smtp_server', 'smtp.gmail.com')),
                                 'smtp_port': smtp_config.get('SMTP_PORT', smtp_config.get('smtp_port', 587))
                             }
-                            print(f"✅ SMTP settings loaded from flat structure")
+                            print(f"✅ SMTP settings loaded from nested structure [GMAIL_SMTP_SETTINGS]")
+                        elif 'EMAIL_ADDRESS' in st.secrets or 'email_address' in st.secrets:
+                            # Flat structure - keys at root level
+                            app_password = st.secrets.get('EMAIL_PASSWORD', st.secrets.get('email_password', ''))
+                            app_password = app_password.replace(' ', '').strip()
+                            
+                            self.smtp_settings = {
+                                'email': st.secrets.get('EMAIL_ADDRESS', st.secrets.get('email_address', '')),
+                                'app_password': app_password,
+                                'smtp_server': st.secrets.get('SMTP_SERVER', st.secrets.get('smtp_server', 'smtp.gmail.com')),
+                                'smtp_port': st.secrets.get('SMTP_PORT', st.secrets.get('smtp_port', 587))
+                            }
+                            print(f"✅ SMTP settings loaded from flat keys (EMAIL_ADDRESS, EMAIL_PASSWORD, etc.)")
                         else:
                             self.smtp_settings = None
-                            print(f"⚠️ SMTP settings not found in secrets")
+                            print(f"⚠️ SMTP settings not found in secrets (checked for GMAIL_SMTP_SETTINGS section and EMAIL_ADDRESS key)")
                         
                         print(f"✅ Credentials loaded from Streamlit secrets (flat)")
                         print(f"🔍 Project ID: {self.credentials.get('project_id', 'NOT SET')}")
