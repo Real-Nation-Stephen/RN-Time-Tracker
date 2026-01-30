@@ -484,11 +484,11 @@ class TimeTrackerApp:
                     
                     # Check why user might be skipped
                     if not name and not email:
-                        skipped_users.append(f"Row {idx}: Missing both Name and Email")
+                        skipped_users.append(f"Row {row_idx}: Missing both Name and Email")
                     elif not name:
-                        skipped_users.append(f"Row {idx}: Missing Name (Email: {email})")
+                        skipped_users.append(f"Row {row_idx}: Missing Name (Email: {email})")
                     elif not email:
-                        skipped_users.append(f"Row {idx}: Missing Email (Name: {name})")
+                        skipped_users.append(f"Row {row_idx}: Missing Email (Name: {name})")
                     else:
                         # Determine role based on email address
                         role = "admin" if email.lower() in [e.lower() for e in admin_emails] else "user"
@@ -505,7 +505,7 @@ class TimeTrackerApp:
                     for skip_reason in skipped_users:
                         print(f"   - {skip_reason}")
                 
-                print(f"✅ Loaded {len(users)} users from sheet (out of {len(records)} records)")
+                print(f"✅ Loaded {len(users)} users from sheet (out of {len(all_values) - 1} data rows)")
                 self._cached_users = users if users else [
                     {"name": "Kay", "email": "kay@realnation.ie", "role": "admin", "password": ""},
                     {"name": "Stephen", "email": "stephen@realnation.ie", "role": "admin", "password": ""}
