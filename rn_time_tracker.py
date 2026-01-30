@@ -449,25 +449,39 @@ class TimeTrackerApp:
                 print(f"✅ Found {len(records)} records in Users sheet")
                 
                 users = []
+                skipped_users = []
                 admin_emails = ["stephen.maguire@realnation.ie", "kay.mckeon@realnation.ie"]
                 
-                for record in records:
+                for idx, record in enumerate(records, start=2):  # Start at 2 because row 1 is headers
                     # Map columns from the sheet (Name, Email, Password, Profile Image)
                     name = str(record.get('Name', '')).strip()
                     email = str(record.get('Email', '')).strip()
                     password = str(record.get('Password', '')).strip()
                     
-                    if name and email:
+                    # Check why user might be skipped
+                    if not name and not email:
+                        skipped_users.append(f"Row {idx}: Missing both Name and Email")
+                    elif not name:
+                        skipped_users.append(f"Row {idx}: Missing Name (Email: {email})")
+                    elif not email:
+                        skipped_users.append(f"Row {idx}: Missing Email (Name: {name})")
+                    else:
                         # Determine role based on email address
-                        role = "admin" if email.lower() in admin_emails else "user"
+                        role = "admin" if email.lower() in [e.lower() for e in admin_emails] else "user"
                         users.append({
                             "name": name,
                             "email": email,
                             "role": role,
                             "password": password
                         })
+                        print(f"   ✅ Added user: {name} ({email})")
                 
-                print(f"✅ Loaded {len(users)} users from sheet")
+                if skipped_users:
+                    print(f"⚠️  Skipped {len(skipped_users)} user(s):")
+                    for skip_reason in skipped_users:
+                        print(f"   - {skip_reason}")
+                
+                print(f"✅ Loaded {len(users)} users from sheet (out of {len(records)} records)")
                 self._cached_users = users if users else [
                     {"name": "Kay", "email": "kay@realnation.ie", "role": "admin", "password": ""},
                     {"name": "Stephen", "email": "stephen@realnation.ie", "role": "admin", "password": ""}
