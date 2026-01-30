@@ -445,38 +445,42 @@ class TimeTrackerApp:
                 print(f"🔍 Accessing '{self.users_tab}' worksheet...")
                 users_sheet = self.spreadsheet.worksheet(self.users_tab)
                 
-                # Get all values first to see what's actually in the sheet
+                # Get all values to catch ALL rows (get_all_records() skips rows with empty first column)
                 all_values = users_sheet.get_all_values()
                 print(f"🔍 Sheet has {len(all_values)} total rows (including header)")
-                if len(all_values) > 1:
-                    print(f"🔍 First few rows: {all_values[:3]}")
                 
-                records = users_sheet.get_all_records()
-                print(f"✅ Found {len(records)} records in Users sheet (get_all_records)")
+                if len(all_values) < 2:
+                    print("⚠️  No data rows found in Users sheet")
+                    return []
                 
-                # Debug: Show what get_all_records() actually returned
-                if len(records) < len(all_values) - 1:
-                    print(f"⚠️  WARNING: get_all_records() found {len(records)} records but sheet has {len(all_values) - 1} data rows")
-                    print(f"   This usually means some rows have empty values in required columns")
-                    # Check which rows might be missing
-                    for i, row in enumerate(all_values[1:], start=2):  # Skip header row
-                        if i <= len(records) + 1:
-                            continue
-                        print(f"   Row {i} data: {row}")
-                        if len(row) > 0:
-                            name_val = row[0].strip() if len(row) > 0 and row[0] else ""
-                            email_val = row[1].strip() if len(row) > 1 and row[1] else ""
-                            print(f"      Name: '{name_val}' | Email: '{email_val}'")
+                # Get header row to find column indices
+                headers = [h.strip() for h in all_values[0]]
+                print(f"🔍 Headers found: {headers}")
+                
+                # Find column indices
+                try:
+                    name_idx = headers.index('Name')
+                    email_idx = headers.index('Email')
+                    password_idx = headers.index('Password') if 'Password' in headers else None
+                except ValueError as e:
+                    print(f"❌ Required column not found: {str(e)}")
+                    print(f"   Available columns: {headers}")
+                    return []
                 
                 users = []
                 skipped_users = []
                 admin_emails = ["stephen.maguire@realnation.ie", "kay.mckeon@realnation.ie"]
                 
-                for idx, record in enumerate(records, start=2):  # Start at 2 because row 1 is headers
-                    # Map columns from the sheet (Name, Email, Password, Profile Image)
-                    name = str(record.get('Name', '')).strip()
-                    email = str(record.get('Email', '')).strip()
-                    password = str(record.get('Password', '')).strip()
+                # Process all data rows (skip header row)
+                for row_idx, row in enumerate(all_values[1:], start=2):
+                    # Ensure row has enough columns
+                    while len(row) <= max(name_idx, email_idx, password_idx if password_idx else 0):
+                        row.append('')
+                    
+                    # Extract values
+                    name = str(row[name_idx]).strip() if name_idx < len(row) else ''
+                    email = str(row[email_idx]).strip() if email_idx < len(row) else ''
+                    password = str(row[password_idx]).strip() if password_idx and password_idx < len(row) else ''
                     
                     # Check why user might be skipped
                     if not name and not email:
