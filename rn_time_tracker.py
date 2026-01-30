@@ -1033,8 +1033,9 @@ class TimeTrackerApp:
                     available_keys = list(st.secrets.keys()) if hasattr(st.secrets, 'keys') else []
                     print(f"🔍 Available Streamlit secret keys: {available_keys}")
                     
-                    # Try flat structure (individual keys at top level)
+                    # Try flat structure (individual keys at top level) - this is what other apps might use
                     if 'project_id' in st.secrets and 'client_email' in st.secrets:
+                        print("🔍 Debug: Found flat structure credentials (project_id and client_email at root)")
                         print("🔍 Debug: Loading credentials from Streamlit secrets (flat structure)...")
                         self.credentials = {
                             "type": st.secrets.get("type", "service_account"),
@@ -1103,7 +1104,7 @@ class TimeTrackerApp:
                             return
                     
                     # Try nested structure (keys under GOOGLE_SHEETS_CREDENTIALS section)
-                    elif 'GOOGLE_SHEETS_CREDENTIALS' in st.secrets:
+                    if 'GOOGLE_SHEETS_CREDENTIALS' in st.secrets:
                         print("🔍 Debug: Loading credentials from Streamlit secrets (nested structure)...")
                         creds_section = st.secrets["GOOGLE_SHEETS_CREDENTIALS"]
                         
@@ -1160,6 +1161,12 @@ class TimeTrackerApp:
                         print(f"   - Flat structure: 'project_id' and 'client_email' at root level")
                         print(f"   - Nested structure: '[GOOGLE_SHEETS_CREDENTIALS]' section")
                         print(f"   Available keys: {available_keys}")
+                        print(f"   ⚠️  If you added [GOOGLE_SHEETS_CREDENTIALS] but it's not showing, there's likely a TOML syntax error")
+                        print(f"   💡 Common TOML errors:")
+                        print(f"      - Private key must use triple quotes: private_key = \"\"\"...\"\"\"")
+                        print(f"      - No extra quotes inside the triple quotes")
+                        print(f"      - Section header must be exactly: [GOOGLE_SHEETS_CREDENTIALS]")
+                        print(f"      - Check for hidden characters or encoding issues")
             except Exception as e:
                 print(f"⚠️  Failed to load from Streamlit secrets: {str(e)}")
                 print(f"🔍 Error type: {type(e).__name__}")
@@ -2392,6 +2399,16 @@ def main():
                                     if 'SPREADSHEET_ID' in st.secrets['GOOGLE_SHEETS_CREDENTIALS']:
                                         st.error("❌ **PROBLEM FOUND**: SPREADSHEET_ID is inside [GOOGLE_SHEETS_CREDENTIALS] section!")
                                         st.warning("💡 **Fix**: Move SPREADSHEET_ID to the root level (outside the section)")
+                                else:
+                                    st.error("❌ **PROBLEM FOUND**: [GOOGLE_SHEETS_CREDENTIALS] section is missing!")
+                                    st.warning("💡 **This usually means a TOML syntax error prevented the section from loading**")
+                                    st.markdown("""
+                                    **Common TOML syntax errors:**
+                                    - Private key must use triple quotes: `private_key = \"\"\"...\"\"\"`
+                                    - Make sure section header is exactly: `[GOOGLE_SHEETS_CREDENTIALS]` (no extra spaces)
+                                    - Check for hidden characters or copy/paste issues
+                                    - Try deleting and re-adding the entire [GOOGLE_SHEETS_CREDENTIALS] section
+                                    """)
                             # Check if SPREADSHEET_ID exists at root level
                             if 'SPREADSHEET_ID' in available_keys:
                                 st.success(f"✅ SPREADSHEET_ID found at root level: {st.secrets.get('SPREADSHEET_ID', 'NOT SET')}")
