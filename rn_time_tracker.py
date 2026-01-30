@@ -994,6 +994,27 @@ class TimeTrackerApp:
         
         return overlaps
     
+    def _validate_credentials(self, credentials: dict, spreadsheet_id: str) -> Tuple[bool, List[str]]:
+        """Validate that credentials have all required fields"""
+        errors = []
+        required_fields = ['project_id', 'private_key', 'client_email', 'client_id']
+        
+        for field in required_fields:
+            value = credentials.get(field, '')
+            if not value or (isinstance(value, str) and value.strip() == ''):
+                errors.append(f"Missing or empty required field: {field}")
+        
+        # Validate private key format
+        private_key = credentials.get('private_key', '')
+        if private_key and not private_key.startswith('-----BEGIN PRIVATE KEY-----'):
+            errors.append("Private key format appears incorrect (should start with '-----BEGIN PRIVATE KEY-----')")
+        
+        # Validate spreadsheet ID
+        if not spreadsheet_id or spreadsheet_id.strip() == '':
+            errors.append("Missing or empty SPREADSHEET_ID")
+        
+        return len(errors) == 0, errors
+    
     def load_credentials(self):
         """Load Google Sheets API credentials from Streamlit secrets or local file"""
         # Initialize default values
@@ -1008,6 +1029,10 @@ class TimeTrackerApp:
             # Try FLAT structure first (like quote app), then nested structure
             try:
                 if hasattr(st, 'secrets'):
+                    # Debug: Show what secrets are available
+                    available_keys = list(st.secrets.keys()) if hasattr(st.secrets, 'keys') else []
+                    print(f"🔍 Available Streamlit secret keys: {available_keys}")
+                    
                     # Try flat structure (individual keys at top level)
                     if 'project_id' in st.secrets and 'client_email' in st.secrets:
                         print("🔍 Debug: Loading credentials from Streamlit secrets (flat structure)...")
@@ -1028,46 +1053,54 @@ class TimeTrackerApp:
                         self.users_tab = st.secrets.get("USERS_TAB_NAME", "Users")
                         self.time_entries_tab = st.secrets.get("TIME_ENTRIES_TAB_NAME", "Time Entries")
                         
-                        # Check for SMTP settings (flat structure - keys at root level)
-                        print(f"🔍 Debug: Checking for SMTP settings in secrets...")
-                        print(f"🔍 Available secret keys: {list(st.secrets.keys())}")
-                        
-                        # Check for nested GMAIL_SMTP_SETTINGS section OR flat EMAIL_ADDRESS keys
-                        if 'GMAIL_SMTP_SETTINGS' in st.secrets:
-                            # Nested structure
-                            smtp_config = dict(st.secrets['GMAIL_SMTP_SETTINGS'])
-                            app_password = smtp_config.get('EMAIL_PASSWORD', smtp_config.get('app_password', ''))
-                            app_password = app_password.replace(' ', '').strip()
-                            
-                            self.smtp_settings = {
-                                'email': smtp_config.get('EMAIL_ADDRESS', smtp_config.get('email', '')),
-                                'app_password': app_password,
-                                'smtp_server': smtp_config.get('SMTP_SERVER', smtp_config.get('smtp_server', 'smtp.gmail.com')),
-                                'smtp_port': smtp_config.get('SMTP_PORT', smtp_config.get('smtp_port', 587))
-                            }
-                            print(f"✅ SMTP settings loaded from nested structure [GMAIL_SMTP_SETTINGS]")
-                        elif 'EMAIL_ADDRESS' in st.secrets or 'email_address' in st.secrets:
-                            # Flat structure - keys at root level
-                            app_password = st.secrets.get('EMAIL_PASSWORD', st.secrets.get('email_password', ''))
-                            app_password = app_password.replace(' ', '').strip()
-                            
-                            self.smtp_settings = {
-                                'email': st.secrets.get('EMAIL_ADDRESS', st.secrets.get('email_address', '')),
-                                'app_password': app_password,
-                                'smtp_server': st.secrets.get('SMTP_SERVER', st.secrets.get('smtp_server', 'smtp.gmail.com')),
-                                'smtp_port': st.secrets.get('SMTP_PORT', st.secrets.get('smtp_port', 587))
-                            }
-                            print(f"✅ SMTP settings loaded from flat keys (EMAIL_ADDRESS, EMAIL_PASSWORD, etc.)")
+                        # Validate credentials
+                        is_valid, errors = self._validate_credentials(self.credentials, self.spreadsheet_id)
+                        if not is_valid:
+                            print(f"❌ Credential validation failed (flat structure):")
+                            for error in errors:
+                                print(f"   - {error}")
+                            self.credentials = None
+                            self.spreadsheet_id = None
                         else:
-                            self.smtp_settings = None
-                            print(f"⚠️ SMTP settings not found in secrets (checked for GMAIL_SMTP_SETTINGS section and EMAIL_ADDRESS key)")
-                        
-                        print(f"✅ Credentials loaded from Streamlit secrets (flat)")
-                        print(f"🔍 Project ID: {self.credentials.get('project_id', 'NOT SET')}")
-                        print(f"🔍 Client Email: {self.credentials.get('client_email', 'NOT SET')}")
-                        print(f"🔍 Spreadsheet ID: {self.spreadsheet_id}")
-                        print(f"🔍 SMTP Settings: {'Configured' if self.smtp_settings else 'NOT CONFIGURED'}")
-                        return
+                            # Check for SMTP settings (flat structure - keys at root level)
+                            print(f"🔍 Debug: Checking for SMTP settings in secrets...")
+                            
+                            # Check for nested GMAIL_SMTP_SETTINGS section OR flat EMAIL_ADDRESS keys
+                            if 'GMAIL_SMTP_SETTINGS' in st.secrets:
+                                # Nested structure
+                                smtp_config = dict(st.secrets['GMAIL_SMTP_SETTINGS'])
+                                app_password = smtp_config.get('EMAIL_PASSWORD', smtp_config.get('app_password', ''))
+                                app_password = app_password.replace(' ', '').strip()
+                                
+                                self.smtp_settings = {
+                                    'email': smtp_config.get('EMAIL_ADDRESS', smtp_config.get('email', '')),
+                                    'app_password': app_password,
+                                    'smtp_server': smtp_config.get('SMTP_SERVER', smtp_config.get('smtp_server', 'smtp.gmail.com')),
+                                    'smtp_port': smtp_config.get('SMTP_PORT', smtp_config.get('smtp_port', 587))
+                                }
+                                print(f"✅ SMTP settings loaded from nested structure [GMAIL_SMTP_SETTINGS]")
+                            elif 'EMAIL_ADDRESS' in st.secrets or 'email_address' in st.secrets:
+                                # Flat structure - keys at root level
+                                app_password = st.secrets.get('EMAIL_PASSWORD', st.secrets.get('email_password', ''))
+                                app_password = app_password.replace(' ', '').strip()
+                                
+                                self.smtp_settings = {
+                                    'email': st.secrets.get('EMAIL_ADDRESS', st.secrets.get('email_address', '')),
+                                    'app_password': app_password,
+                                    'smtp_server': st.secrets.get('SMTP_SERVER', st.secrets.get('smtp_server', 'smtp.gmail.com')),
+                                    'smtp_port': st.secrets.get('SMTP_PORT', st.secrets.get('smtp_port', 587))
+                                }
+                                print(f"✅ SMTP settings loaded from flat keys (EMAIL_ADDRESS, EMAIL_PASSWORD, etc.)")
+                            else:
+                                self.smtp_settings = None
+                                print(f"⚠️ SMTP settings not found in secrets (checked for GMAIL_SMTP_SETTINGS section and EMAIL_ADDRESS key)")
+                            
+                            print(f"✅ Credentials loaded from Streamlit secrets (flat)")
+                            print(f"🔍 Project ID: {self.credentials.get('project_id', 'NOT SET')}")
+                            print(f"🔍 Client Email: {self.credentials.get('client_email', 'NOT SET')}")
+                            print(f"🔍 Spreadsheet ID: {self.spreadsheet_id}")
+                            print(f"🔍 SMTP Settings: {'Configured' if self.smtp_settings else 'NOT CONFIGURED'}")
+                            return
                     
                     # Try nested structure (keys under GOOGLE_SHEETS_CREDENTIALS section)
                     elif 'GOOGLE_SHEETS_CREDENTIALS' in st.secrets:
@@ -1091,30 +1124,47 @@ class TimeTrackerApp:
                         self.users_tab = st.secrets.get("USERS_TAB_NAME", "Users")
                         self.time_entries_tab = st.secrets.get("TIME_ENTRIES_TAB_NAME", "Time Entries")
                         
-                        if 'GMAIL_SMTP_SETTINGS' in st.secrets:
-                            smtp_config = dict(st.secrets['GMAIL_SMTP_SETTINGS'])
-                            # Normalize keys to lowercase for compatibility
-                            app_password = smtp_config.get('EMAIL_PASSWORD', smtp_config.get('app_password', ''))
-                            # Remove spaces from app password (Gmail format is "xxxx xxxx xxxx xxxx" but needs "xxxxxxxxxxxxxxxx")
-                            app_password = app_password.replace(' ', '').strip()
-                            
-                            self.smtp_settings = {
-                                'email': smtp_config.get('EMAIL_ADDRESS', smtp_config.get('email', '')),
-                                'app_password': app_password,
-                                'smtp_server': smtp_config.get('SMTP_SERVER', smtp_config.get('smtp_server', 'smtp.gmail.com')),
-                                'smtp_port': smtp_config.get('SMTP_PORT', smtp_config.get('smtp_port', 587))
-                            }
+                        # Validate credentials
+                        is_valid, errors = self._validate_credentials(self.credentials, self.spreadsheet_id)
+                        if not is_valid:
+                            print(f"❌ Credential validation failed (nested structure):")
+                            for error in errors:
+                                print(f"   - {error}")
+                            self.credentials = None
+                            self.spreadsheet_id = None
                         else:
-                            self.smtp_settings = None
-                        
-                        print(f"✅ Credentials loaded from Streamlit secrets (nested)")
-                        print(f"🔍 Project ID: {self.credentials.get('project_id', 'NOT SET')}")
-                        print(f"🔍 Client Email: {self.credentials.get('client_email', 'NOT SET')}")
-                        print(f"🔍 Spreadsheet ID: {self.spreadsheet_id}")
-                        return
+                            if 'GMAIL_SMTP_SETTINGS' in st.secrets:
+                                smtp_config = dict(st.secrets['GMAIL_SMTP_SETTINGS'])
+                                # Normalize keys to lowercase for compatibility
+                                app_password = smtp_config.get('EMAIL_PASSWORD', smtp_config.get('app_password', ''))
+                                # Remove spaces from app password (Gmail format is "xxxx xxxx xxxx xxxx" but needs "xxxxxxxxxxxxxxxx")
+                                app_password = app_password.replace(' ', '').strip()
+                                
+                                self.smtp_settings = {
+                                    'email': smtp_config.get('EMAIL_ADDRESS', smtp_config.get('email', '')),
+                                    'app_password': app_password,
+                                    'smtp_server': smtp_config.get('SMTP_SERVER', smtp_config.get('smtp_server', 'smtp.gmail.com')),
+                                    'smtp_port': smtp_config.get('SMTP_PORT', smtp_config.get('smtp_port', 587))
+                                }
+                            else:
+                                self.smtp_settings = None
+                            
+                            print(f"✅ Credentials loaded from Streamlit secrets (nested)")
+                            print(f"🔍 Project ID: {self.credentials.get('project_id', 'NOT SET')}")
+                            print(f"🔍 Client Email: {self.credentials.get('client_email', 'NOT SET')}")
+                            print(f"🔍 Spreadsheet ID: {self.spreadsheet_id}")
+                            return
+                    else:
+                        print("⚠️  No Google Sheets credentials found in Streamlit secrets")
+                        print(f"   Expected either:")
+                        print(f"   - Flat structure: 'project_id' and 'client_email' at root level")
+                        print(f"   - Nested structure: '[GOOGLE_SHEETS_CREDENTIALS]' section")
+                        print(f"   Available keys: {available_keys}")
             except Exception as e:
                 print(f"⚠️  Failed to load from Streamlit secrets: {str(e)}")
                 print(f"🔍 Error type: {type(e).__name__}")
+                import traceback
+                print(f"🔍 Traceback: {traceback.format_exc()}")
                 # Continue to fallback
             
             # Fall back to local file (for local development)
@@ -1145,19 +1195,31 @@ class TimeTrackerApp:
             self.users_tab = USERS_TAB_NAME
             self.time_entries_tab = TIME_ENTRIES_TAB_NAME
             
-            print(f"✅ Credentials loaded from local file")
-            print(f"🔍 Project ID: {self.credentials.get('project_id', 'NOT SET')}")
-            print(f"🔍 Client Email: {self.credentials.get('client_email', 'NOT SET')}")
-            print(f"🔍 Spreadsheet ID: {self.spreadsheet_id}")
+            # Validate local credentials too
+            is_valid, errors = self._validate_credentials(self.credentials, self.spreadsheet_id)
+            if not is_valid:
+                print(f"❌ Local credential validation failed:")
+                for error in errors:
+                    print(f"   - {error}")
+                self.credentials = None
+                self.spreadsheet_id = None
+            else:
+                print(f"✅ Credentials loaded from local file")
+                print(f"🔍 Project ID: {self.credentials.get('project_id', 'NOT SET')}")
+                print(f"🔍 Client Email: {self.credentials.get('client_email', 'NOT SET')}")
+                print(f"🔍 Spreadsheet ID: {self.spreadsheet_id}")
                 
         except ImportError as e:
             print("⚠️  Authentication credentials not found. Using demo mode.")
             print(f"🔍 Debug: Import error: {str(e)}")
+            print(f"   Make sure auth/password_sheet_api.py exists with GOOGLE_SHEETS_CREDENTIALS defined")
             self.credentials = None
             self.smtp_settings = None
             self.spreadsheet_id = None
         except Exception as e:
             print(f"❌ Failed to load credentials: {str(e)}")
+            import traceback
+            print(f"🔍 Traceback: {traceback.format_exc()}")
             self.credentials = None
             self.smtp_settings = None
             self.spreadsheet_id = None
@@ -1169,11 +1231,27 @@ class TimeTrackerApp:
             return True
             
         try:
-            if not self.credentials or not self.spreadsheet_id:
-                print("⚠️  No Google Sheets credentials or spreadsheet ID found")
+            if not self.credentials:
+                print("⚠️  No Google Sheets credentials found")
+                print("   Credentials object is None or missing")
+                return False
+                
+            if not self.spreadsheet_id:
+                print("⚠️  No Spreadsheet ID found")
+                print("   SPREADSHEET_ID is None or empty")
+                return False
+            
+            # Validate credentials before attempting connection
+            is_valid, errors = self._validate_credentials(self.credentials, self.spreadsheet_id)
+            if not is_valid:
+                print("❌ Credential validation failed:")
+                for error in errors:
+                    print(f"   - {error}")
                 return False
                 
             print(f"🔍 Connecting to Google Sheets...")
+            print(f"   Spreadsheet ID: {self.spreadsheet_id}")
+            print(f"   Service Account: {self.credentials.get('client_email', 'NOT SET')}")
             
             # Use your suggested pattern
             scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
@@ -1187,11 +1265,26 @@ class TimeTrackerApp:
             
         except gspread.SpreadsheetNotFound:
             print(f"❌ Spreadsheet with ID '{self.spreadsheet_id}' not found.")
-            print("📋 Make sure the spreadsheet is shared with your service account email.")
+            print(f"   Service Account Email: {self.credentials.get('client_email', 'NOT SET') if self.credentials else 'NO CREDENTIALS'}")
+            print("📋 Make sure:")
+            print("   1. The spreadsheet ID is correct")
+            print("   2. The spreadsheet is shared with the service account email above")
+            print("   3. The service account has Editor permissions")
+            return False
+        except gspread.exceptions.APIError as e:
+            print(f"❌ Google Sheets API Error: {str(e)}")
+            print(f"   Error code: {getattr(e, 'response', {}).get('status', 'Unknown')}")
+            if 'PERMISSION_DENIED' in str(e) or 'permission' in str(e).lower():
+                print("📋 This usually means:")
+                print("   1. The spreadsheet is not shared with the service account")
+                print("   2. The service account doesn't have Editor permissions")
+                print(f"   3. Share the sheet with: {self.credentials.get('client_email', 'NOT SET') if self.credentials else 'NO CREDENTIALS'}")
             return False
         except Exception as e:
             print(f"❌ Failed to connect to Google Sheets: {str(e)}")
             print(f"🔍 Error type: {type(e).__name__}")
+            import traceback
+            print(f"🔍 Full traceback:\n{traceback.format_exc()}")
             return False
     
     def save_to_backup_sheet(self, entries: List[Dict]) -> bool:
@@ -2276,6 +2369,76 @@ def main():
         # Show connection status
         if len(users) == 2 and users[0]["name"] == "Kay" and users[1]["name"] == "Stephen":
             st.warning("⚠️ Using demo mode - Google Sheets not connected. Only showing fallback users.")
+            
+            # Diagnostic information
+            with st.expander("🔧 Diagnostic Information (Click to expand)", expanded=False):
+                st.markdown("### Connection Status")
+                
+                # Check credentials
+                if app.credentials:
+                    st.success("✅ Credentials loaded")
+                    st.code(f"Project ID: {app.credentials.get('project_id', 'NOT SET')}")
+                    st.code(f"Client Email: {app.credentials.get('client_email', 'NOT SET')}")
+                else:
+                    st.error("❌ Credentials NOT loaded")
+                    st.info("💡 **Solution**: Add secrets to Streamlit Cloud Settings → Secrets")
+                
+                # Check spreadsheet ID
+                if app.spreadsheet_id:
+                    st.success(f"✅ Spreadsheet ID: {app.spreadsheet_id}")
+                else:
+                    st.error("❌ Spreadsheet ID NOT set")
+                
+                # Try to connect and show error
+                st.markdown("### Connection Test")
+                if st.button("🔄 Test Connection", type="secondary"):
+                    with st.spinner("Testing connection..."):
+                        # Clear cached connection
+                        if hasattr(app, 'sheet_client'):
+                            app.sheet_client = None
+                        if hasattr(app, 'spreadsheet'):
+                            app.spreadsheet = None
+                        if hasattr(app, '_cached_users'):
+                            del app._cached_users
+                        
+                        # Try to connect
+                        try:
+                            if app.connect_to_sheets():
+                                st.success("✅ Connection successful!")
+                                # Try to get users
+                                test_users = app.get_users_from_sheet()
+                                if len(test_users) > 2 or (len(test_users) == 2 and not (test_users[0]["name"] == "Kay" and test_users[1]["name"] == "Stephen")):
+                                    st.success(f"✅ Found {len(test_users)} users in Google Sheet")
+                                    st.rerun()
+                                else:
+                                    st.warning("⚠️ Connection works but only demo users found")
+                            else:
+                                st.error("❌ Connection failed")
+                                st.info("Check the app logs for detailed error messages")
+                        except Exception as e:
+                            st.error(f"❌ Connection error: {str(e)}")
+                            st.code(str(e))
+                
+                st.markdown("### Troubleshooting Steps")
+                st.markdown("""
+                1. **Check Streamlit Cloud Secrets**: Go to Settings → Secrets and verify:
+                   - `[GOOGLE_SHEETS_CREDENTIALS]` section exists
+                   - `SPREADSHEET_ID` is set at root level
+                   - All required fields are present
+                
+                2. **Check Google Sheet Sharing**: 
+                   - Open your Google Sheet
+                   - Click Share
+                   - Make sure `rn-copy-checker@rn-copy-checker-app.iam.gserviceaccount.com` has Editor access
+                
+                3. **Check App Logs**: 
+                   - Go to Manage app → Logs
+                   - Look for error messages starting with ❌ or ⚠️
+                
+                4. **Verify Sheet Structure**:
+                   - Make sure there's a "Users" tab
+                   - Columns should be: Name, Email, Password
+                """)
         else:
             st.success(f"✅ Connected to Google Sheets - {len(users)} users loaded")
         
