@@ -2374,6 +2374,28 @@ def main():
             with st.expander("🔧 Diagnostic Information (Click to expand)", expanded=False):
                 st.markdown("### Connection Status")
                 
+                # Show available secret keys
+                try:
+                    if hasattr(st, 'secrets'):
+                        available_keys = list(st.secrets.keys()) if hasattr(st.secrets, 'keys') else []
+                        if available_keys:
+                            st.info(f"📋 **Available secret keys**: {', '.join(available_keys)}")
+                            # Check for nested sections
+                            nested_sections = [k for k in available_keys if isinstance(st.secrets.get(k), dict)]
+                            if nested_sections:
+                                st.info(f"📁 **Nested sections found**: {', '.join(nested_sections)}")
+                                # Show keys inside GOOGLE_SHEETS_CREDENTIALS if it exists
+                                if 'GOOGLE_SHEETS_CREDENTIALS' in st.secrets:
+                                    creds_keys = list(st.secrets['GOOGLE_SHEETS_CREDENTIALS'].keys()) if hasattr(st.secrets['GOOGLE_SHEETS_CREDENTIALS'], 'keys') else []
+                                    st.code(f"Keys in [GOOGLE_SHEETS_CREDENTIALS]: {', '.join(creds_keys) if creds_keys else 'None'}")
+                        else:
+                            st.error("❌ **No secrets found at all!**")
+                            st.warning("💡 **Action Required**: Go to Streamlit Cloud → Settings → Secrets and add your credentials")
+                    else:
+                        st.error("❌ Streamlit secrets not available")
+                except Exception as e:
+                    st.error(f"❌ Error checking secrets: {str(e)}")
+                
                 # Check credentials
                 if app.credentials:
                     st.success("✅ Credentials loaded")
@@ -2382,12 +2404,28 @@ def main():
                 else:
                     st.error("❌ Credentials NOT loaded")
                     st.info("💡 **Solution**: Add secrets to Streamlit Cloud Settings → Secrets")
+                    st.markdown("""
+                    **Expected format:**
+                    ```toml
+                    [GOOGLE_SHEETS_CREDENTIALS]
+                    type = "service_account"
+                    project_id = "rn-copy-checker-app"
+                    private_key = """-----BEGIN PRIVATE KEY-----
+                    [your key here]
+                    -----END PRIVATE KEY-----"""
+                    client_email = "rn-copy-checker@rn-copy-checker-app.iam.gserviceaccount.com"
+                    # ... other fields
+                    
+                    SPREADSHEET_ID = "1nLOJvUut6RgfYbsSQa1ghPnJMaUWdHbbvlWqSDwwmU4"
+                    ```
+                    """)
                 
                 # Check spreadsheet ID
                 if app.spreadsheet_id:
                     st.success(f"✅ Spreadsheet ID: {app.spreadsheet_id}")
                 else:
                     st.error("❌ Spreadsheet ID NOT set")
+                    st.info("💡 **Note**: SPREADSHEET_ID must be at ROOT level (not inside [GOOGLE_SHEETS_CREDENTIALS])")
                 
                 # Try to connect and show error
                 st.markdown("### Connection Test")
