@@ -2388,6 +2388,16 @@ def main():
                                 if 'GOOGLE_SHEETS_CREDENTIALS' in st.secrets:
                                     creds_keys = list(st.secrets['GOOGLE_SHEETS_CREDENTIALS'].keys()) if hasattr(st.secrets['GOOGLE_SHEETS_CREDENTIALS'], 'keys') else []
                                     st.code(f"Keys in [GOOGLE_SHEETS_CREDENTIALS]: {', '.join(creds_keys) if creds_keys else 'None'}")
+                                    # Check if SPREADSHEET_ID is incorrectly inside the section
+                                    if 'SPREADSHEET_ID' in st.secrets['GOOGLE_SHEETS_CREDENTIALS']:
+                                        st.error("❌ **PROBLEM FOUND**: SPREADSHEET_ID is inside [GOOGLE_SHEETS_CREDENTIALS] section!")
+                                        st.warning("💡 **Fix**: Move SPREADSHEET_ID to the root level (outside the section)")
+                            # Check if SPREADSHEET_ID exists at root level
+                            if 'SPREADSHEET_ID' in available_keys:
+                                st.success(f"✅ SPREADSHEET_ID found at root level: {st.secrets.get('SPREADSHEET_ID', 'NOT SET')}")
+                            else:
+                                st.error("❌ SPREADSHEET_ID NOT found at root level")
+                                st.warning("💡 **Fix**: Add SPREADSHEET_ID at the root level in your secrets")
                         else:
                             st.error("❌ **No secrets found at all!**")
                             st.warning("💡 **Action Required**: Go to Streamlit Cloud → Settings → Secrets and add your credentials")
