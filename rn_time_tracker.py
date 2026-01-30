@@ -2410,9 +2410,9 @@ def main():
                     [GOOGLE_SHEETS_CREDENTIALS]
                     type = "service_account"
                     project_id = "rn-copy-checker-app"
-                    private_key = """-----BEGIN PRIVATE KEY-----
+                    private_key = \"\"\"-----BEGIN PRIVATE KEY-----
                     [your key here]
-                    -----END PRIVATE KEY-----"""
+                    -----END PRIVATE KEY-----\"\"\"
                     client_email = "rn-copy-checker@rn-copy-checker-app.iam.gserviceaccount.com"
                     # ... other fields
                     
