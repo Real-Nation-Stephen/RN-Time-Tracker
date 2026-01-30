@@ -445,8 +445,28 @@ class TimeTrackerApp:
                 print(f"🔍 Accessing '{self.users_tab}' worksheet...")
                 users_sheet = self.spreadsheet.worksheet(self.users_tab)
                 
+                # Get all values first to see what's actually in the sheet
+                all_values = users_sheet.get_all_values()
+                print(f"🔍 Sheet has {len(all_values)} total rows (including header)")
+                if len(all_values) > 1:
+                    print(f"🔍 First few rows: {all_values[:3]}")
+                
                 records = users_sheet.get_all_records()
-                print(f"✅ Found {len(records)} records in Users sheet")
+                print(f"✅ Found {len(records)} records in Users sheet (get_all_records)")
+                
+                # Debug: Show what get_all_records() actually returned
+                if len(records) < len(all_values) - 1:
+                    print(f"⚠️  WARNING: get_all_records() found {len(records)} records but sheet has {len(all_values) - 1} data rows")
+                    print(f"   This usually means some rows have empty values in required columns")
+                    # Check which rows might be missing
+                    for i, row in enumerate(all_values[1:], start=2):  # Skip header row
+                        if i <= len(records) + 1:
+                            continue
+                        print(f"   Row {i} data: {row}")
+                        if len(row) > 0:
+                            name_val = row[0].strip() if len(row) > 0 and row[0] else ""
+                            email_val = row[1].strip() if len(row) > 1 and row[1] else ""
+                            print(f"      Name: '{name_val}' | Email: '{email_val}'")
                 
                 users = []
                 skipped_users = []
