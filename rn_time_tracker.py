@@ -2827,88 +2827,88 @@ def show_time_tracker(app):
                             'Auto-Parsed': '✅' if parsed.get('parsed', False) else '⚠️ Manual',
                             'Original Title': event['summary']
                         })
-                
-                df_day = pd.DataFrame(event_data)
-                
-                # Show dropdown for manually selecting projects (for unparsed items)
-                unparsed_count = len([e for e in event_data if e['Auto-Parsed'] == '⚠️ Manual'])
-                if unparsed_count > 0:
-                    if available_projects:
-                        with st.expander(f"⚠️ {unparsed_count} event(s) need project assignment - Click to assign", expanded=True):
-                            st.info("💡 Select a project from the dropdown for events that weren't auto-parsed, or manually edit the table below.")
-                            for idx, row in enumerate(event_data):
-                                if row['Auto-Parsed'] == '⚠️ Manual':
-                                    st.markdown(f"**Event:** {row['Original Title']}")
-                                    st.caption(f"🕐 {row['Start']} - {row['End']}")
-                                    selected = st.selectbox(
-                                        "Select project from your list",
-                                        options=project_options,
-                                        key=f"project_select_{row['_key']}",
-                                        help="Choose from your Projects sheet or enter manually in the table below"
-                                    )
-                                    if selected != "-- Select from list or enter manually --":
-                                        project = project_lookup[selected]
-                                        # Update the dataframe
-                                        df_day.loc[idx, 'Project Code'] = project['project_code']
-                                        df_day.loc[idx, 'Job Number'] = project['job_number']
-                                        df_day.loc[idx, 'Client'] = project['client']
-                                        df_day.loc[idx, 'Project'] = project['project']
-                                        df_day.loc[idx, 'Job'] = project['job']
-                                        df_day.loc[idx, 'Version'] = project['version']
-                                        st.success(f"✅ Assigned: {project['display_name']}")
-                                    st.divider()
-                    else:
-                        st.warning(f"⚠️ {unparsed_count} event(s) need manual assignment. No projects found in Google Sheets 'Projects' tab.")
-                        st.info("💡 Add projects to the 'Projects' tab in your Google Sheet, or manually edit the table below.")
-                
-                    # Editable table for standard entries
-                edited_df_day = st.data_editor(
-                    df_day.drop(columns=['_key', 'Auto-Parsed']),
-                use_container_width=True,
-                    num_rows="fixed",
-                        key=f"event_editor_std_{date_str}",
-                    hide_index=True,
-                    column_config={
-                        "Include": st.column_config.CheckboxColumn(
-                            "Include?",
-                            help="Uncheck to exclude this event from your timesheet",
-                            default=True,
-                            width="small"
-                        ),
-                        "Type": st.column_config.TextColumn("Type", width="small"),
-                        "Start": st.column_config.TextColumn("Start", width="small"),
-                        "End": st.column_config.TextColumn("End", width="small"),
-                        "Duration": st.column_config.TextColumn("Duration", width="small"),
-                        "Original Title": st.column_config.TextColumn("Original Title", width="large")
-                    }
-                )
-                
-                # Show exclusion info
-                excluded_count = len(edited_df_day[edited_df_day['Include'] == False])
-                if excluded_count > 0:
-                    st.warning(f"🚫 {excluded_count} event(s) will be excluded from this day")
-                
-                    # Collect standard entries
-                for _, row in edited_df_day.iterrows():
-                    if not row.get('Include', True):
-                        continue
                     
-                    entry = {
-                        'date': date_str,
-                        'start_time': row['Start'],
-                        'end_time': row['End'],
-                        'duration': row['Duration'],
-                        'project_code': row['Project Code'],
-                        'job_number': row['Job Number'],
-                        'client': row['Client'],
-                        'project': row['Project'],
-                        'job': row['Job'],
-                        'version': row['Version'],
-                        'user_email': app.user_email,
-                        'event_type': row['Type'],
-                        'is_aibfs': False
-                    }
-                    all_entries.append(entry)
+                    df_day = pd.DataFrame(event_data)
+                    
+                    # Show dropdown for manually selecting projects (for unparsed items)
+                    unparsed_count = len([e for e in event_data if e['Auto-Parsed'] == '⚠️ Manual'])
+                    if unparsed_count > 0:
+                        if available_projects:
+                            with st.expander(f"⚠️ {unparsed_count} event(s) need project assignment - Click to assign", expanded=True):
+                                st.info("💡 Select a project from the dropdown for events that weren't auto-parsed, or manually edit the table below.")
+                                for idx, row in enumerate(event_data):
+                                    if row['Auto-Parsed'] == '⚠️ Manual':
+                                        st.markdown(f"**Event:** {row['Original Title']}")
+                                        st.caption(f"🕐 {row['Start']} - {row['End']}")
+                                        selected = st.selectbox(
+                                            "Select project from your list",
+                                            options=project_options,
+                                            key=f"project_select_{row['_key']}",
+                                            help="Choose from your Projects sheet or enter manually in the table below"
+                                        )
+                                        if selected != "-- Select from list or enter manually --":
+                                            project = project_lookup[selected]
+                                            # Update the dataframe
+                                            df_day.loc[idx, 'Project Code'] = project['project_code']
+                                            df_day.loc[idx, 'Job Number'] = project['job_number']
+                                            df_day.loc[idx, 'Client'] = project['client']
+                                            df_day.loc[idx, 'Project'] = project['project']
+                                            df_day.loc[idx, 'Job'] = project['job']
+                                            df_day.loc[idx, 'Version'] = project['version']
+                                            st.success(f"✅ Assigned: {project['display_name']}")
+                                        st.divider()
+                        else:
+                            st.warning(f"⚠️ {unparsed_count} event(s) need manual assignment. No projects found in Google Sheets 'Projects' tab.")
+                            st.info("💡 Add projects to the 'Projects' tab in your Google Sheet, or manually edit the table below.")
+                    
+                    # Editable table for standard entries
+                    edited_df_day = st.data_editor(
+                        df_day.drop(columns=['_key', 'Auto-Parsed']),
+                        use_container_width=True,
+                        num_rows="fixed",
+                        key=f"event_editor_std_{date_str}",
+                        hide_index=True,
+                        column_config={
+                            "Include": st.column_config.CheckboxColumn(
+                                "Include?",
+                                help="Uncheck to exclude this event from your timesheet",
+                                default=True,
+                                width="small"
+                            ),
+                            "Type": st.column_config.TextColumn("Type", width="small"),
+                            "Start": st.column_config.TextColumn("Start", width="small"),
+                            "End": st.column_config.TextColumn("End", width="small"),
+                            "Duration": st.column_config.TextColumn("Duration", width="small"),
+                            "Original Title": st.column_config.TextColumn("Original Title", width="large")
+                        }
+                    )
+                    
+                    # Show exclusion info
+                    excluded_count = len(edited_df_day[edited_df_day['Include'] == False])
+                    if excluded_count > 0:
+                        st.warning(f"🚫 {excluded_count} event(s) will be excluded from this day")
+                    
+                    # Collect standard entries
+                    for _, row in edited_df_day.iterrows():
+                        if not row.get('Include', True):
+                            continue
+                        
+                        entry = {
+                            'date': date_str,
+                            'start_time': row['Start'],
+                            'end_time': row['End'],
+                            'duration': row['Duration'],
+                            'project_code': row['Project Code'],
+                            'job_number': row['Job Number'],
+                            'client': row['Client'],
+                            'project': row['Project'],
+                            'job': row['Job'],
+                            'version': row['Version'],
+                            'user_email': app.user_email,
+                            'event_type': row['Type'],
+                            'is_aibfs': False
+                        }
+                        all_entries.append(entry)
                 
                 # Process AIB FUTURE SPARKS events
                 if aibfs_events:
@@ -2990,8 +2990,8 @@ def show_time_tracker(app):
                             'user_email': app.user_email,
                             'event_type': row['Type'],
                             'is_aibfs': True
-                    }
-                    all_entries.append(entry)
+                        }
+                        all_entries.append(entry)
                 
                 # Process BCR events
                 if bcr_events:
@@ -3071,8 +3071,8 @@ def show_time_tracker(app):
                             'user_email': app.user_email,
                             'event_type': row['Type'],
                             'is_bcr': True
-                    }
-                    all_entries.append(entry)
+                        }
+                        all_entries.append(entry)
             
             # Sign-off section
             st.markdown("---")
